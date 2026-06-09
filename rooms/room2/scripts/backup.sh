@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Backup script - DO NOT MODIFY
 # Usage: backup.sh <source_file>
 #

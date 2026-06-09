@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # Room 11 — cron 每分鐘執行此腳本
 # 邏輯：讀 /tmp/key，XOR 加密 /secret/data，輸出到 /tmp/result
 

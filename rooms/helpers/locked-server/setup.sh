@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 set -e
 ssh-keygen -A
 cat > /home/player/README.txt << 'TXT'

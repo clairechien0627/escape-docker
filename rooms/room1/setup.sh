@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 set -e
 
 FLAG=$(echo "${FLAG_SEED}-room1" | sha256sum | cut -c1-16)

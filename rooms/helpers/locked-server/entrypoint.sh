@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 export FLAG_SEED="${FLAG_SEED:-escape_docker_dev_seed}"
 
 # 啟動 SSH daemon

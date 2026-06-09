@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # 動態生成 FLAG（因為 FLAG_SEED 是 runtime env var）
 FLAG=$(echo "${FLAG_SEED:-escape_docker_dev_seed}-room2" | sha256sum | cut -c1-16)
 FLAG_VAL="EscapeDocker{${FLAG}}"

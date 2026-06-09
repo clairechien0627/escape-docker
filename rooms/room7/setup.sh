@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 set -e
 
 # ── Challenge：壞掉的 Dockerfile ──
