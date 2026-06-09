@@ -1,0 +1,17 @@
+{
+  "name": "escape-docker-terminal-gateway",
+  "version": "1.0.0",
+  "description": "WebSocket terminal gateway for Escape Docker",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "node-pty": "^1.0.0",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

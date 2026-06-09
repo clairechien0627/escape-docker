@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Escape Docker</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .page { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+    h1 { font-size: 1.4rem; color: var(--red); margin-bottom: 1.5rem; }
+    .login-form { max-width: 360px; margin: 4rem auto; text-align: center; }
+    .login-form h2 { margin-bottom: 1.5rem; color: var(--red); }
+    .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    @media (max-width:768px) { .admin-grid { grid-template-columns: 1fr; } }
+    .stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+    .stat-card h3 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); margin-bottom: 0.5rem; }
+    .stat-big { font-size: 2rem; font-weight: 700; color: var(--red); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th { text-align:left; padding: 0.4rem 0.6rem; font-size:0.7rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); border-bottom:1px solid var(--border); }
+    td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--bg-hover); }
+    tr:hover td { background: var(--bg-hover); }
+    .section-title { font-size: 1rem; font-weight: 700; color: var(--text-main); margin: 1.5rem 0 0.75rem; }
+    #flags-table .flag-val { font-size: 0.68rem; color: var(--cyan); font-family: monospace; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="index.html">🐳 Escape Docker</a>
+  <span style="color:var(--red);font-size:0.82rem;">🔴 Admin Panel</span>
+</nav>
+
+<!-- Login form -->
+<div class="login-form" id="login-section">
+  <h2>🔐 Admin Login</h2>
+  <input class="input" id="token-input" type="password" placeholder="Admin Token" style="width:100%;margin-bottom:0.75rem">
+  <button class="btn btn-danger" style="width:100%" id="login-btn">Login</button>
+</div>
+
+<!-- Dashboard -->
+<div class="page" id="dashboard-section" style="display:none">
+  <h1>🔴 Admin Dashboard</h1>
+  <button class="btn mb-2" id="refresh-btn">🔄 Refresh</button>
+
+  <div class="admin-grid">
+    <div class="stat-card">
+      <h3>玩家數</h3>
+      <div class="stat-big" id="stat-players">--</div>
+    </div>
+    <div class="stat-card">
+      <h3>提交次數</h3>
+      <div class="stat-big" id="stat-submissions">--</div>
+    </div>
+  </div>
+
+  <!-- Scoreboard -->
+  <div class="section-title">📊 排行榜</div>
+  <div class="card mb-2"><table id="scoreboard-table"><thead><tr><th>名次</th><th>玩家</th><th>分數</th><th>FLAGS</th><th>最後提交</th></tr></thead><tbody></tbody></table></div>
+
+  <!-- All Flags (答案) -->
+  <div class="section-title">🚩 FLAG 答案清單</div>
+  <div class="card mb-2"><table id="flags-table"><thead><tr><th>ID</th><th>Room</th><th>Points</th><th>FLAG Value</th></tr></thead><tbody></tbody></table></div>
+
+  <!-- Recent Submissions -->
+  <div class="section-title">📥 最近提交記錄</div>
+  <div class="card mb-2"><table id="submissions-table"><thead><tr><th>玩家</th><th>FLAG</th><th>時間</th></tr></thead><tbody></tbody></table></div>
+
+  <!-- Hint Usage -->
+  <div class="section-title">💡 提示使用記錄</div>
+  <div class="card"><table id="hints-table"><thead><tr><th>玩家</th><th>Room</th><th>Level</th><th>Cost</th><th>時間</th></tr></thead><tbody></tbody></table></div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+let adminToken = '';
+
+async function loadDashboard() {
+  try {
+    const [dash, flagsInfo] = await Promise.all([
+      apiFetch('/admin/dashboard', { headers: { 'X-Admin-Token': adminToken } }),
+      apiFetch('/admin/flags-info', { headers: { 'X-Admin-Token': adminToken } }),
+    ]);
+
+    document.getElementById('stat-players').textContent = dash.scoreboard.length;
+    document.getElementById('stat-submissions').textContent = dash.submissions.length;
+
+    // Scoreboard
+    const sbTbody = document.querySelector('#scoreboard-table tbody');
+    sbTbody.innerHTML = dash.scoreboard.slice(0,20).map((p,i) => `
+      <tr><td>${i+1}</td><td>${p.name}</td><td style="color:var(--yellow)">${p.total_score}</td><td>${p.flags_found}</td><td style="font-size:0.72rem;color:var(--text-dim)">${p.last_submit||'—'}</td></tr>
+    `).join('');
+
+    // Flags
+    const fTbody = document.querySelector('#flags-table tbody');
+    fTbody.innerHTML = flagsInfo.map(f => `
+      <tr><td>${f.id}</td><td>${f.room}</td><td style="color:var(--yellow)">${f.points}</td><td class="flag-val">${f.flag}</td></tr>
+    `).join('');
+
+    // Submissions
+    const subTbody = document.querySelector('#submissions-table tbody');
+    subTbody.innerHTML = dash.submissions.slice(0,50).map(s => `
+      <tr><td>${s.player_name}</td><td style="color:var(--blue)">${s.flag_id}</td><td style="font-size:0.72rem;color:var(--text-dim)">${s.submitted_at}</td></tr>
+    `).join('');
+
+    // Hints
+    const hTbody = document.querySelector('#hints-table tbody');
+    hTbody.innerHTML = dash.hint_usage.slice(0,30).map(h => `
+      <tr><td>${h.player_name}</td><td>${h.room_id}</td><td>${h.hint_level}</td><td style="color:var(--red)">${h.cost}</td><td style="font-size:0.72rem;color:var(--text-dim)">${h.used_at}</td></tr>
+    `).join('');
+
+  } catch(e) {
+    toast(`載入失敗：${e.message}`, 'error');
+    if (e.message.includes('403')) { document.getElementById('dashboard-section').style.display='none'; document.getElementById('login-section').style.display='block'; }
+  }
+}
+
+document.getElementById('login-btn').addEventListener('click', async () => {
+  adminToken = document.getElementById('token-input').value.trim();
+  if (!adminToken) return;
+  try {
+    await apiFetch('/admin/dashboard', { headers: { 'X-Admin-Token': adminToken } });
+    document.getElementById('login-section').style.display = 'none';
+    document.getElementById('dashboard-section').style.display = 'block';
+    loadDashboard();
+  } catch { toast('Token 錯誤', 'error'); }
+});
+
+document.getElementById('refresh-btn').addEventListener('click', loadDashboard);
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "rooms": {
+    "room0":    { "container": "room0",   "name": "Tutorial — 初入系統",       "chapter": 1 },
+    "room1":    { "container": "room1",   "name": "The Archive — 檔案搜尋",    "chapter": 1 },
+    "room2":    { "container": "room2",   "name": "The Vault — 權限迷宮",      "chapter": 1 },
+    "room3":    { "container": "room3",   "name": "The Process — 行程管理",    "chapter": 2 },
+    "room4":    { "container": "room4",   "name": "The Locksmith — SSH 密鑰",  "chapter": 2 },
+    "room5":    { "container": "room5",   "name": "The Wire — 網路診斷",       "chapter": 2 },
+    "room6":    { "container": "room6",   "name": "The Shipyard — Docker 基礎","chapter": 3 },
+    "room7":    { "container": "room7",   "name": "The Workshop — Docker Build","chapter": 3 },
+    "room8":    { "container": "room8",   "name": "The Fleet — Docker Compose","chapter": 3 },
+    "room9":    { "container": "room9",   "name": "Network Maze — Docker 網路","chapter": 3 },
+    "room10":   { "container": "room10",  "name": "The Evidence — 日誌分析",   "chapter": 4 },
+    "room11":   { "container": "room11",  "name": "The Clockwork — 自動化",    "chapter": 4 },
+    "final":    { "container": "final",   "name": "The Escape — Final Boss",   "chapter": 5 },
+    "secret-a": { "container": "secret-a","name": "The Leak — 環境變數洩漏",   "chapter": 0 },
+    "secret-b": { "container": "secret-b","name": "The Ghost — Image 層挖掘",  "chapter": 0 }
+  }
+}

@@ -1,0 +1,32 @@
+# ── 機密設定（絕對不要 commit）──
+.env
+*.env.local
+
+# ── 資料庫（遊戲進度，每次 demo 不同）──
+scoreboard-api/data/*.db
+scoreboard-api/data/*.db-wal
+scoreboard-api/data/*.db-shm
+
+# ── Node.js 依賴 ──
+node_modules/
+
+# ── Python 快取 ──
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── 報告與攻略（不上傳到 Git）──
+# walkthrough.md
+
+# ── OS 垃圾檔 ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo

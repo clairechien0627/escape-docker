@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scoreboard — Escape Docker</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .page { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
+    h1 { font-size: 1.5rem; color: var(--green); margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-dim); font-size: 0.82rem; margin-bottom: 2rem; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left;
+      padding: 0.55rem 0.75rem;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 0.65rem 0.75rem;
+      font-size: 0.88rem;
+      border-bottom: 1px solid var(--bg-hover);
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--bg-hover); }
+    .rank-cell { font-weight: 700; font-size: 1rem; width: 50px; }
+    .player-cell { font-weight: 600; }
+    .score-cell { color: var(--yellow); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .flags-cell { color: var(--blue); }
+    .achv-cell { color: var(--purple); }
+    .time-cell { color: var(--text-dim); font-size: 0.78rem; }
+    .medals { font-size: 1.1rem; }
+
+    .top3-row { background: linear-gradient(90deg, rgba(255,215,0,0.04) 0%, transparent 100%); }
+    .top1-row { background: linear-gradient(90deg, rgba(255,215,0,0.07) 0%, transparent 100%); }
+
+    .refresh-info { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 1rem; }
+
+    .no-data {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="index.html">🐳 Escape Docker</a>
+  <div class="navbar-links">
+    <a href="map.html">🗺️ Map</a>
+    <a href="scoreboard.html" class="active">📊 Score</a>
+    <a href="achievements.html">🏆 成就</a>
+  </div>
+</nav>
+
+<div class="page">
+  <h1>📊 Scoreboard</h1>
+  <p class="subtitle">每 15 秒自動更新</p>
+
+  <div class="refresh-info" id="last-update">--</div>
+
+  <div class="card">
+    <div id="board-container">
+      <div class="flex-center" style="height:150px"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+const MEDALS = ['🥇','🥈','🥉'];
+
+async function refresh() {
+  try {
+    const data = await API.scoreboard();
+    const container = document.getElementById('board-container');
+    document.getElementById('last-update').textContent =
+      `最後更新：${new Date().toLocaleTimeString('zh-TW')}`;
+
+    if (!data.length) {
+      container.innerHTML = '<div class="no-data">還沒有玩家提交 FLAG<br>成為第一個！</div>';
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.innerHTML = `
+      <thead><tr>
+        <th>名次</th>
+        <th>玩家</th>
+        <th>分數</th>
+        <th>FLAGS</th>
+        <th>成就</th>
+        <th>最後提交</th>
+      </tr></thead>
+    `;
+    const tbody = document.createElement('tbody');
+
+    data.forEach((p, i) => {
+      const tr = document.createElement('tr');
+      if (i === 0) tr.className = 'top1-row';
+      else if (i < 3) tr.className = 'top3-row';
+
+      const medal = MEDALS[i] || '';
+      const rankClass = i < 3 ? `rank-${i+1}` : '';
+      const lastTime = p.last_submit
+        ? new Date(p.last_submit.replace(' ','T')+'Z').toLocaleString('zh-TW', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})
+        : '—';
+
+      tr.innerHTML = `
+        <td class="rank-cell ${rankClass}">${medal || p.rank}</td>
+        <td class="player-cell">${p.avatar || '🐳'} ${p.name}</td>
+        <td class="score-cell">${p.score.toLocaleString()}</td>
+        <td class="flags-cell">${p.flags} / 15</td>
+        <td class="achv-cell">${p.achievements}</td>
+        <td class="time-cell">${lastTime}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    container.innerHTML = '';
+    container.appendChild(table);
+  } catch (e) {
+    toast(`更新失敗：${e.message}`, 'error');
+  }
+}
+
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>

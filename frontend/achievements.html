@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>成就 — Escape Docker</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .page { max-width: 800px; margin: 0 auto; padding: 1.5rem; }
+    h1 { font-size: 1.5rem; color: var(--yellow); margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-dim); font-size: 0.82rem; margin-bottom: 2rem; }
+
+    .achievements-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 0.75rem;
+    }
+    .achievement-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      transition: border-color 0.2s;
+    }
+    .achievement-card.unlocked { border-color: var(--yellow); }
+    .achievement-card.locked { opacity: 0.4; filter: grayscale(1); }
+    .achv-icon { font-size: 2rem; flex-shrink: 0; }
+    .achv-info { flex: 1; }
+    .achv-name { font-weight: 700; font-size: 0.88rem; margin-bottom: 0.2rem; }
+    .achv-desc { font-size: 0.75rem; color: var(--text-dim); line-height: 1.4; }
+    .achv-pts { font-size: 0.72rem; color: var(--yellow); margin-top: 0.3rem; }
+    .achv-earned { font-size: 0.7rem; color: var(--green); margin-top: 0.2rem; }
+
+    .progress-header {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.5rem;
+      margin-bottom: 1.5rem;
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .pstat { text-align: center; }
+    .pstat-num { font-size: 1.8rem; font-weight: 700; color: var(--yellow); }
+    .pstat-label { font-size: 0.72rem; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="index.html">🐳 Escape Docker</a>
+  <div class="navbar-links">
+    <a href="map.html">🗺️ Map</a>
+    <a href="scoreboard.html">📊 Score</a>
+    <a href="achievements.html" class="active">🏆 成就</a>
+  </div>
+</nav>
+
+<div class="page">
+  <h1>🏆 成就牆</h1>
+  <p class="subtitle" id="player-label">完成特定條件即可解鎖</p>
+
+  <div class="progress-header" id="progress-header" style="display:none">
+    <div class="pstat">
+      <div class="pstat-num" id="unlocked-count">0</div>
+      <div class="pstat-label">已解鎖</div>
+    </div>
+    <div class="pstat">
+      <div class="pstat-num" id="total-count">10</div>
+      <div class="pstat-label">總成就</div>
+    </div>
+    <div class="pstat">
+      <div class="pstat-num" id="achv-pts">0</div>
+      <div class="pstat-label">成就分數</div>
+    </div>
+  </div>
+
+  <div class="achievements-grid" id="achievements-grid">
+    <div class="flex-center" style="height:150px;grid-column:1/-1"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+async function loadAchievements() {
+  const player = await requirePlayer();
+
+  try {
+    const [allAchvs, progress] = await Promise.all([
+      API.achievements(),
+      player ? API.player(player) : Promise.resolve({ achievements: [] }),
+    ]);
+
+    const earnedSet = new Set(progress.achievements);
+    const grid = document.getElementById('achievements-grid');
+    grid.innerHTML = '';
+
+    let totalBonus = 0;
+    allAchvs.forEach(a => {
+      if (earnedSet.has(a.id)) totalBonus += a.points;
+    });
+
+    document.getElementById('progress-header').style.display = 'flex';
+    document.getElementById('unlocked-count').textContent = earnedSet.size;
+    document.getElementById('total-count').textContent = allAchvs.length;
+    document.getElementById('achv-pts').textContent = totalBonus;
+    document.getElementById('player-label').textContent =
+      player ? `${player} 的成就 — ${earnedSet.size} / ${allAchvs.length}` : '完成特定條件即可解鎖';
+
+    for (const a of allAchvs) {
+      const earned = earnedSet.has(a.id);
+      const card = document.createElement('div');
+      card.className = `achievement-card ${earned ? 'unlocked' : 'locked'}`;
+      card.innerHTML = `
+        <div class="achv-icon">${a.icon}</div>
+        <div class="achv-info">
+          <div class="achv-name">${a.name}</div>
+          <div class="achv-desc">${a.desc}</div>
+          <div class="achv-pts">+${a.points} pts</div>
+          ${earned ? '<div class="achv-earned">✅ 已解鎖</div>' : '<div class="achv-earned" style="color:var(--text-muted)">🔒 未解鎖</div>'}
+        </div>
+      `;
+      grid.appendChild(card);
+    }
+  } catch (e) {
+    toast(`載入失敗：${e.message}`, 'error');
+  }
+}
+loadAchievements();
+</script>
+</body>
+</html>

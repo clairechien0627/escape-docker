@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Room Map — Escape Docker</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { padding-bottom: 3rem; }
+    .page { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+    h1 { font-size: 1.5rem; color: var(--green); margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 2rem; }
+
+    .chapter-section { margin-bottom: 2rem; }
+    .chapter-title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .rooms-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.75rem;
+    }
+    .room-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .room-card:hover:not(.locked) {
+      border-color: var(--blue);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(88,166,255,0.1);
+    }
+    .room-card.locked {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .room-card.completed {
+      border-color: var(--green-dim);
+    }
+    .room-card.completed::after {
+      content: '✓';
+      position: absolute;
+      top: 8px; right: 10px;
+      color: var(--green);
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .room-card.secret-room {
+      border-style: dashed;
+      border-color: var(--purple);
+    }
+    .room-card.secret-room:not(.locked) {
+      opacity: 0.75;
+    }
+    .room-icon { font-size: 1.8rem; margin-bottom: 0.5rem; }
+    .room-id { font-size: 0.7rem; color: var(--text-muted); }
+    .room-name { font-size: 0.95rem; font-weight: 600; margin: 0.2rem 0; }
+    .room-desc { font-size: 0.75rem; color: var(--text-dim); line-height: 1.4; }
+    .room-pts {
+      margin-top: 0.6rem;
+      font-size: 0.72rem;
+      color: var(--yellow);
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .lock-overlay {
+      position: absolute;
+      top: 50%; right: 12px;
+      transform: translateY(-50%);
+      font-size: 1.2rem;
+      opacity: 0.5;
+    }
+    .progress-bar-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.5rem;
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .progress-bar-wrap { flex: 1; min-width: 200px; }
+    .progress-label { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 0.4rem; }
+    .progress-bar {
+      height: 8px;
+      background: var(--bg-hover);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--green), var(--cyan));
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+    .progress-stat { font-size: 1.3rem; font-weight: 700; color: var(--blue); }
+    .progress-stat-label { font-size: 0.72rem; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="index.html">🐳 Escape Docker</a>
+  <div class="navbar-links">
+    <a href="map.html" class="active">🗺️ Map</a>
+    <a href="scoreboard.html">📊 Score</a>
+    <a href="achievements.html">🏆 成就</a>
+  </div>
+  <div class="navbar-score" id="score-display">分數：--</div>
+</nav>
+
+<div class="page">
+  <h1>🗺️ Room Map</h1>
+  <p class="subtitle" id="player-greeting">完成關卡，收集所有 FLAG</p>
+
+  <div class="progress-bar-container" id="progress-section" style="display:none">
+    <div class="progress-bar-wrap">
+      <div class="progress-label" id="progress-label">進度 0 / 13</div>
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    </div>
+    <div>
+      <div class="progress-stat" id="stat-flags">0</div>
+      <div class="progress-stat-label">FLAGS</div>
+    </div>
+    <div>
+      <div class="progress-stat" id="stat-score">0</div>
+      <div class="progress-stat-label">分數</div>
+    </div>
+    <div>
+      <div class="progress-stat" id="stat-achieve">0</div>
+      <div class="progress-stat-label">成就</div>
+    </div>
+  </div>
+
+  <div id="map-container">
+    <div class="flex-center" style="height:200px"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+const CHAPTERS = [
+  { num: 1, title: "Chapter 1 — The Awakening",   icon: "🌅", rooms: ["room0","room1","room2"]  },
+  { num: 2, title: "Chapter 2 — The Network",      icon: "🌐", rooms: ["room3","room4","room5"]  },
+  { num: 3, title: "Chapter 3 — Docker Dimension", icon: "🐳", rooms: ["room6","room7","room8","room9"] },
+  { num: 4, title: "Chapter 4 — The Deep End",     icon: "🔥", rooms: ["room10","room11"]         },
+  { num: 5, title: "The Escape — Final Boss",      icon: "💀", rooms: ["final"]                  },
+  { num: 0, title: "🔮 Secret Rooms",              icon: "🔮", rooms: ["secret-a","secret-b"]    },
+];
+
+const ROOM_DESCS = {
+  room0:    "pwd, ls, cd, cat, echo, man",
+  room1:    "find, base64, strings, xxd",
+  room2:    "chmod, sudo, SUID, backup.sh",
+  room3:    "ps, /proc, kill, signals, strace",
+  room4:    "ssh-keygen, authorized_keys, SSH tunnel",
+  room5:    "ss, nc, curl, /etc/hosts",
+  room6:    "docker ps/logs/inspect/diff",
+  room7:    "Dockerfile, docker build, layers",
+  room8:    "docker-compose, healthcheck",
+  room9:    "docker network, DNS, internal",
+  room10:   "grep, awk, sed, log analysis",
+  room11:   "crontab, bash scripting, trap",
+  final:    "docker.sock, Docker REST API",
+  "secret-a": "ENV 洩漏，docker inspect",
+  "secret-b": "Image layer 挖掘",
+};
+
+async function loadMap() {
+  const player = await requirePlayer();
+  if (!player) return;
+
+  document.getElementById('player-greeting').textContent =
+    `玩家：${player} — 點擊房間進入遊戲`;
+
+  try {
+    const [roomsMeta, progress, sb] = await Promise.all([
+      API.rooms(),
+      API.player(player),
+      API.scoreboard(),
+    ]);
+
+    const roomMap = {};
+    roomsMeta.forEach(r => roomMap[r.id] = r);
+    const doneSet = new Set(progress.rooms.filter(r=>r.completed).map(r=>r.id));
+    const lockedSet = new Set(progress.rooms.filter(r=>r.locked).map(r=>r.id));
+
+    const completedCount = doneSet.size;
+    const totalMain = 13;
+    const pct = Math.round(completedCount / totalMain * 100);
+    document.getElementById('progress-section').style.display = 'flex';
+    document.getElementById('progress-label').textContent = `進度 ${completedCount} / ${totalMain}`;
+    document.getElementById('progress-fill').style.width = `${pct}%`;
+    document.getElementById('stat-flags').textContent = progress.flags.length;
+    document.getElementById('stat-achieve').textContent = progress.achievements.length;
+
+    const me = sb.find(p => p.name === player);
+    const myScore = me ? me.score : 0;
+    document.getElementById('stat-score').textContent = myScore;
+    document.getElementById('score-display').textContent = `分數：${myScore}`;
+
+    const container = document.getElementById('map-container');
+    container.innerHTML = '';
+
+    for (const chapter of CHAPTERS) {
+      const section = document.createElement('div');
+      section.className = 'chapter-section';
+      section.innerHTML = `<div class="chapter-title">${chapter.icon} ${chapter.title}</div>`;
+      const grid = document.createElement('div');
+      grid.className = 'rooms-grid';
+
+      for (const rid of chapter.rooms) {
+        const meta = roomMap[rid] || { name: rid, icon: '❓', points: 0 };
+        const isCompleted = doneSet.has(rid);
+        const isLocked = lockedSet.has(rid) && !doneSet.has(rid);
+        const isSecret = chapter.num === 0;
+
+        const card = document.createElement('div');
+        card.className = `room-card${isLocked ? ' locked' : ''}${isCompleted ? ' completed' : ''}${isSecret ? ' secret-room' : ''}`;
+        card.innerHTML = `
+          <div class="room-icon">${meta.icon}</div>
+          <div class="room-id">${rid.toUpperCase()}</div>
+          <div class="room-name">${meta.name}</div>
+          <div class="room-desc">${ROOM_DESCS[rid] || ''}</div>
+          <div class="room-pts">💎 ${meta.points} pts</div>
+          ${isLocked ? '<div class="lock-overlay">🔒</div>' : ''}
+        `;
+        if (!isLocked) {
+          card.addEventListener('click', () => {
+            window.location.href = `play.html?room=${rid}`;
+          });
+        }
+        grid.appendChild(card);
+      }
+      section.appendChild(grid);
+      container.appendChild(section);
+    }
+  } catch (e) {
+    toast(`載入失敗：${e.message}`, 'error');
+  }
+}
+
+loadMap();
+</script>
+</body>
+</html>

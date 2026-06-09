@@ -1,0 +1,341 @@
+# ─────────────────────────────────────────────
+# FLAG_SEED 從 .env 讀入，所有 room 共享
+# ─────────────────────────────────────────────
+x-room-defaults: &room-defaults
+  restart: unless-stopped
+  stdin_open: true
+  tty: true
+
+services:
+
+  # ──────────────── 反向代理 ────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: escape-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - terminal-gateway
+      - scoreboard-api
+    networks:
+      - game_net
+    restart: unless-stopped
+
+  # ──────────────── Web Terminal Gateway ────────────────
+  terminal-gateway:
+    build: ./terminal-gateway
+    container_name: terminal-gateway
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - game_net
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+
+  # ──────────────── Scoreboard API ────────────────
+  scoreboard-api:
+    build: ./scoreboard-api
+    container_name: scoreboard-api
+    volumes:
+      - ./scoreboard-api/data:/app/data
+    networks:
+      - game_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-admin_dev_token}
+    restart: unless-stopped
+
+  # ══════════════ Chapter 1：The Awakening ══════════════
+
+  room0:
+    build: ./rooms/room0
+    container_name: room0
+    hostname: room0
+    <<: *room-defaults
+    networks:
+      - game_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+
+  room1:
+    build: ./rooms/room1
+    container_name: room1
+    hostname: room1
+    <<: *room-defaults
+    networks:
+      - game_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+
+  room2:
+    build: ./rooms/room2
+    container_name: room2
+    hostname: room2
+    <<: *room-defaults
+    networks:
+      - game_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_READ_SEARCH
+
+  # ══════════════ Chapter 2：The Network ══════════════
+
+  room3:
+    build: ./rooms/room3
+    container_name: room3
+    hostname: room3
+    <<: *room-defaults
+    networks:
+      - game_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+
+  room4:
+    build: ./rooms/room4
+    container_name: room4
+    hostname: room4
+    <<: *room-defaults
+    networks:
+      - game_net
+      - ssh_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+
+  locked-server:
+    build: ./rooms/helpers/locked-server
+    container_name: locked-server
+    hostname: locked-server
+    networks:
+      - ssh_net
+    restart: unless-stopped
+
+  room5:
+    build: ./rooms/room5
+    container_name: room5
+    hostname: room5
+    <<: *room-defaults
+    networks:
+      - game_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+
+  # ══════════════ Chapter 3：The Docker Dimension ══════════════
+
+  room6:
+    build: ./rooms/room6
+    container_name: room6
+    hostname: room6
+    <<: *room-defaults
+    networks:
+      - game_net
+      - docker_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  room7:
+    build: ./rooms/room7
+    container_name: room7
+    hostname: room7
+    <<: *room-defaults
+    networks:
+      - game_net
+      - docker_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  room8:
+    build: ./rooms/room8
+    container_name: room8
+    hostname: room8
+    <<: *room-defaults
+    networks:
+      - game_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+    volumes:
+      - ./rooms/room8/challenge:/home/player/challenge:ro
+
+  room9:
+    build: ./rooms/room9
+    container_name: room9
+    hostname: room9
+    <<: *room-defaults
+    networks:
+      - game_net
+      - docker_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  secret-server:
+    build: ./rooms/helpers/secret-server
+    container_name: secret-server
+    hostname: secret-server
+    networks:
+      secret_net:
+        aliases:
+          - secret-server.internal
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+    restart: unless-stopped
+
+  # ══════════════ Chapter 4：The Deep End ══════════════
+
+  room10:
+    build: ./rooms/room10
+    container_name: room10
+    hostname: room10
+    <<: *room-defaults
+    networks:
+      - game_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+
+  room11:
+    build: ./rooms/room11
+    container_name: room11
+    hostname: room11
+    <<: *room-defaults
+    networks:
+      - game_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+
+  # ══════════════ Final Boss ══════════════
+
+  final:
+    build: ./rooms/final
+    container_name: final
+    hostname: final
+    <<: *room-defaults
+    networks:
+      - game_net
+      - docker_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  vault:
+    image: alpine:3.19
+    container_name: vault
+    hostname: vault
+    command: >
+      sh -c "
+        FLAG=$$(echo '${FLAG_SEED:-escape_docker_dev_seed}-final' | sha256sum | cut -c1-16) &&
+        echo \"EscapeDocker{$${FLAG}}\" > /final_flag.txt &&
+        echo '=== VAULT ===' &&
+        echo 'This is the vault. The final flag is secured here.' &&
+        tail -f /dev/null
+      "
+    networks:
+      - docker_net
+    restart: unless-stopped
+
+  # ══════════════ Secret Rooms ══════════════
+
+  secret-a:
+    build: ./rooms/secret-a
+    container_name: secret-a
+    hostname: secret-a
+    <<: *room-defaults
+    networks:
+      - game_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+      - LEAKED_SECRET=${FLAG_SEED:-escape_docker_dev_seed}   # 故意洩漏
+
+  secret-b:
+    build: ./rooms/secret-b
+    container_name: secret-b
+    hostname: secret-b
+    <<: *room-defaults
+    networks:
+      - game_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+
+  # ══════════════ Helper Containers ══════════════
+
+  # Room 6 用的 3 個停止的容器（啟動後立即停止）
+  ghost-alpha:
+    image: alpine:3.19
+    container_name: ghost-alpha
+    command: >
+      sh -c "
+        PART=$$(echo '${FLAG_SEED:-escape_docker_dev_seed}-ghost-alpha' | sha256sum | cut -c1-8) &&
+        echo \"FLAG_PART_1: EscapeDocker-part1-$${PART}\"
+      "
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+      - FLAG_PART2_HINT=Check my environment variables with docker inspect
+    networks:
+      - docker_net
+    restart: "no"
+
+  ghost-beta:
+    image: alpine:3.19
+    container_name: ghost-beta
+    command: sh -c "echo 'ghost-beta is done, check docker inspect for secrets' && exit 0"
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+      - SECRET_FLAG_PART2=part2_inspect_me
+    networks:
+      - docker_net
+    restart: "no"
+
+  ghost-gamma:
+    image: ubuntu:22.04
+    container_name: ghost-gamma
+    command: >
+      bash -c "
+        mkdir -p /app/secret &&
+        PART=$$(echo '${FLAG_SEED:-escape_docker_dev_seed}-ghost-gamma' | sha256sum | cut -c1-8) &&
+        echo \"$${PART}\" > /app/secret/fragment.txt &&
+        echo 'gamma container done'
+      "
+    networks:
+      - docker_net
+    restart: "no"
+
+# ══════════════ Networks ══════════════
+networks:
+  game_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+  docker_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+
+  secret_net:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24
+
+  ssh_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.23.0.0/24

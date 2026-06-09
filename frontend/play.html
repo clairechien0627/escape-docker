@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Play — Escape Docker</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+  <style>
+    html, body { height: 100%; overflow: hidden; }
+
+    .play-layout {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      height: 100vh;
+    }
+    .play-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.55rem 1rem;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .play-header .room-title { font-weight: 700; color: var(--blue); font-size: 0.9rem; }
+    .play-header .timer { color: var(--yellow); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+    .play-header .score-chip { color: var(--green); font-size: 0.82rem; }
+    .play-header .back-btn { color: var(--text-dim); font-size: 0.82rem; }
+
+    .play-body {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      min-height: 0;
+    }
+    @media (max-width: 768px) {
+      .play-body { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+    }
+
+    #terminal-container {
+      background: #0d1117;
+      overflow: hidden;
+      height: 100%;
+    }
+    .xterm { height: 100% !important; }
+    .xterm-viewport { overflow-y: hidden !important; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--bg-card);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      height: 100%;
+    }
+    .sidebar-section {
+      border-bottom: 1px solid var(--border);
+      padding: 0.9rem;
+    }
+    .sidebar-section h3 {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      margin-bottom: 0.7rem;
+    }
+    .mission-text {
+      font-size: 0.82rem;
+      line-height: 1.6;
+      color: var(--text-dim);
+      white-space: pre-wrap;
+    }
+    .mission-text strong { color: var(--text-main); }
+
+    /* Submit FLAG */
+    .flag-input-row {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.6rem;
+    }
+    .flag-input-row .input { flex: 1; font-size: 0.78rem; padding: 0.4rem 0.6rem; }
+    .flag-input-row .btn { padding: 0.4rem 0.75rem; font-size: 0.78rem; }
+
+    /* Hints */
+    .hint-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      margin-bottom: 0.4rem;
+      padding: 0.45rem 0.7rem;
+      font-size: 0.78rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-hover);
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .hint-btn:hover { border-color: var(--yellow); color: var(--yellow); }
+    .hint-btn.used { border-color: var(--green-dim); color: var(--green); }
+    .hint-content {
+      background: var(--bg-dark);
+      border-left: 2px solid var(--yellow);
+      padding: 0.5rem 0.7rem;
+      font-size: 0.78rem;
+      color: var(--yellow);
+      border-radius: 0 4px 4px 0;
+      margin-bottom: 0.4rem;
+      display: none;
+    }
+    .hint-cost { color: var(--red); font-size: 0.7rem; }
+    .hint-cost.free { color: var(--green); }
+
+    /* Related commands */
+    .cmd-tag {
+      display: inline-block;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.15rem 0.4rem;
+      font-size: 0.72rem;
+      color: var(--cyan);
+      margin: 0.15rem;
+      cursor: pointer;
+    }
+    .cmd-tag:hover { border-color: var(--cyan); background: #0d2a2e; }
+
+    /* Fullscreen toggle */
+    .fullscreen-btn {
+      margin-left: auto;
+      font-size: 0.78rem;
+      cursor: pointer;
+      color: var(--text-muted);
+      padding: 0.3rem 0.5rem;
+      border-radius: 4px;
+    }
+    .fullscreen-btn:hover { color: var(--text-main); background: var(--bg-hover); }
+  </style>
+</head>
+<body>
+
+<div class="play-layout">
+
+  <!-- Header -->
+  <div class="play-header">
+    <a class="back-btn btn" href="map.html">← Map</a>
+    <span class="room-title" id="room-title">Loading...</span>
+    <span class="timer" id="timer">⏱ 00:00</span>
+    <span class="score-chip" id="score-chip">💎 --</span>
+    <span class="fullscreen-btn" id="fullscreen-btn" title="全螢幕終端機">⛶</span>
+  </div>
+
+  <!-- Body -->
+  <div class="play-body" id="play-body">
+
+    <!-- xterm.js terminal -->
+    <div id="terminal-container"></div>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+
+      <!-- Mission -->
+      <div class="sidebar-section">
+        <h3>📋 Mission</h3>
+        <div class="mission-text" id="mission-text">載入中...</div>
+      </div>
+
+      <!-- Submit FLAG -->
+      <div class="sidebar-section">
+        <h3>🚩 Submit FLAG</h3>
+        <div class="flag-input-row">
+          <input class="input" id="flag-input" placeholder="EscapeDocker{...}" autocomplete="off" spellcheck="false">
+          <button class="btn btn-success" id="flag-submit-btn">提交</button>
+        </div>
+        <div id="submit-result" style="margin-top:0.4rem;font-size:0.78rem;"></div>
+      </div>
+
+      <!-- Hints -->
+      <div class="sidebar-section" id="hints-section">
+        <h3>💡 Hints</h3>
+        <div id="hints-container">載入提示...</div>
+      </div>
+
+      <!-- Related Commands -->
+      <div class="sidebar-section" id="cmds-section">
+        <h3>🔧 相關指令</h3>
+        <div id="cmds-container"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script src="js/api.js"></script>
+<script src="js/terminal.js"></script>
+<script>
+const ROOM_MISSIONS = {
+  room0:  `<strong>初入系統 — Tutorial</strong>\n\n你剛進入系統。先熟悉環境。\n\n任務：閱讀 /welcome.txt，然後找到藏在系統裡的第一個 FLAG。\n\n提示：先讀讀 /etc/motd`,
+  room1:  `<strong>The Archive — 檔案搜尋</strong>\n\n有人把 FLAG 藏在成百上千個檔案中。\n\n任務：用 find 找出被 base64 編碼的檔案，解碼後取得 FLAG。`,
+  room2:  `<strong>The Vault — 權限迷宮</strong>\n\n/secret/flag.txt 被鎖起來了，你沒有權限讀取。\n\n任務：找出能讓你讀到檔案的方法。\n\n提示：sudo -l`,
+  room3:  `<strong>The Process — 行程管理</strong>\n\n背景有個神秘程序藏著 FLAG。\n\n任務：找到那個程序，觸發它輸出 FLAG。`,
+  room4:  `<strong>The Locksmith — SSH 密鑰</strong>\n\n有個 locked-server 只接受公鑰認證。\n\n任務：生成 SSH 金鑰對，安裝公鑰，登入取得 FLAG。`,
+  room5:  `<strong>The Wire — 網路診斷</strong>\n\n有個服務在某個未知的 port 上監聽。\n\n任務：找到那個 port，連線，回答謎語取得 FLAG。`,
+  room6:  `<strong>The Shipyard — Docker 基礎</strong>\n\n有 3 個停止的容器，各藏著 FLAG 的一部分。\n\n任務：用 docker logs、inspect、exec 分別找出三個部分。`,
+  room7:  `<strong>The Workshop — Docker Build</strong>\n\n有個壞掉的 Dockerfile，build 出來的程式無法輸出 FLAG。\n\n任務：修正 Dockerfile，重新 build，執行取得 FLAG。`,
+  room8:  `<strong>The Fleet — Docker Compose</strong>\n\n有份不完整的 docker-compose.yml。\n\n任務：補全設定，讓服務正確啟動，服務會回傳 FLAG。`,
+  room9:  `<strong>Network Maze — Docker 網路</strong>\n\nsecret-server.internal 在隔離網路裡，你現在連不到。\n\n任務：想辦法讓自己能存取那個服務，取得 FLAG。`,
+  room10: `<strong>The Evidence — 日誌分析</strong>\n\n/var/log/ 下有三個相關的 log 檔。\n\n任務：從 auth.log 開始，層層追蹤，最終從 app.log 找出 FLAG。`,
+  room11: `<strong>The Clockwork — 自動化</strong>\n\n有個每分鐘執行的 cron job 在加密一個檔案。\n\n任務：理解腳本邏輯，寫入正確的 key，等待解密結果。`,
+  final:  `<strong>The Escape — Final Boss</strong>\n\n你發現了 /var/run/docker.sock。\n\n任務：用 Docker REST API 找到 vault 容器，讀取 /final_flag.txt。\n\n⚠️ 這是真實存在的安全漏洞。`,
+  "secret-a": `<strong>The Leak — 環境變數洩漏</strong>\n\n🔮 Secret Room\n\n有個容器把秘密放錯地方了。\n\n任務：找出那個洩漏的環境變數。`,
+  "secret-b": `<strong>The Ghost — Image 層挖掘</strong>\n\n🔮 Secret Room\n\n有個 Docker image 的某個 layer 裡藏著已被刪除的秘密。\n\n任務：提取 image，在 layer 中找到 FLAG。`,
+};
+
+const ROOM_CMDS = {
+  room0:  ['pwd', 'ls -la', 'cat', 'man ls', 'history'],
+  room1:  ['find / -name "*.encoded"', 'base64 -d', 'file', 'strings', 'xxd'],
+  room2:  ['sudo -l', 'ls -la /secret', 'cat /usr/local/bin/backup.sh', 'sudo backup.sh'],
+  room3:  ['ps aux', 'ps aux | grep flag', 'cat /proc/PID/cmdline', 'kill -USR1 PID', 'strace -p PID'],
+  room4:  ['ssh-keygen -t ed25519', 'cat ~/.ssh/id_ed25519.pub', 'ssh player@locked-server', 'ssh -L'],
+  room5:  ['ss -tlnp', 'nc localhost PORT', 'curl localhost:PORT', 'cat /etc/hosts'],
+  room6:  ['docker ps -a', 'docker logs ghost-alpha', 'docker inspect ghost-beta', 'docker start ghost-gamma', 'docker exec ghost-gamma bash'],
+  room7:  ['cat Dockerfile', 'docker build -t myimg .', 'docker run --rm myimg', 'docker history'],
+  room8:  ['cat docker-compose.yml', 'docker compose up', 'docker compose logs app', 'docker compose ps'],
+  room9:  ['docker network ls', 'docker network inspect', 'docker network connect NET CONTAINER', 'curl -H "X-Token: ..."'],
+  room10: ['grep "Failed" auth.log', "awk '{print $11}'", 'sort | uniq -c | sort -rn', 'cut -d" " -f7', 'zcat'],
+  room11: ['crontab -l', 'cat /etc/cron.d/*', 'ls /tmp', 'echo key > /tmp/key', 'watch ls /secret'],
+  final:  ['ls /var/run/', 'curl --unix-socket /var/run/docker.sock http://localhost/containers/json', 'python3 -m json.tool', 'docker ps'],
+  "secret-a": ['docker inspect secret-a', 'docker inspect secret-a | grep -i secret', 'docker history'],
+  "secret-b": ['docker save IMAGE | tar x', 'tar xf layer.tar', 'find /tmp/layers -type f | xargs grep EscapeDocker'],
+};
+
+// ── Init ──
+const params = new URLSearchParams(location.search);
+const roomId = params.get('room') || 'room0';
+
+document.title = `${roomId.toUpperCase()} — Escape Docker`;
+document.getElementById('room-title').textContent = `Room: ${roomId.toUpperCase()}`;
+
+// Mission
+document.getElementById('mission-text').innerHTML =
+  (ROOM_MISSIONS[roomId] || 'No mission data').replace(/\n/g, '<br>');
+
+// Commands
+const cmdsContainer = document.getElementById('cmds-container');
+(ROOM_CMDS[roomId] || []).forEach(cmd => {
+  const tag = document.createElement('span');
+  tag.className = 'cmd-tag';
+  tag.textContent = cmd;
+  tag.title = 'Click to paste';
+  tag.addEventListener('click', () => {
+    if (window._term && window._term.ws && window._term.ws.readyState === WebSocket.OPEN) {
+      window._term.ws.send(cmd);
+    }
+  });
+  cmdsContainer.appendChild(tag);
+});
+
+// Hints
+async function loadHints() {
+  const container = document.getElementById('hints-container');
+  try {
+    const hints = await API.hints(roomId);
+    container.innerHTML = '';
+    for (const h of hints) {
+      const wrapper = document.createElement('div');
+      const btn = document.createElement('button');
+      btn.className = 'hint-btn';
+      btn.innerHTML = `
+        <span>Level ${h.level} 提示</span>
+        <span class="hint-cost ${h.cost === 0 ? 'free' : ''}">${h.cost === 0 ? '免費' : `-${h.cost}pts`}</span>
+      `;
+      const content = document.createElement('div');
+      content.className = 'hint-content';
+      wrapper.appendChild(btn);
+      wrapper.appendChild(content);
+      container.appendChild(wrapper);
+
+      btn.addEventListener('click', async () => {
+        if (content.style.display === 'block') {
+          content.style.display = 'none'; return;
+        }
+        const player = getPlayer();
+        if (!player) { toast('請先設定名字', 'error'); return; }
+        try {
+          const res = await API.useHint(roomId, h.level);
+          content.textContent = res.text;
+          content.style.display = 'block';
+          btn.classList.add('used');
+          if (!res.already_used && res.cost > 0) {
+            toast(`使用提示：-${res.cost} pts`, 'info');
+          }
+        } catch(e) { toast(e.message, 'error'); }
+      });
+    }
+  } catch { container.textContent = '（無提示）'; }
+}
+loadHints();
+
+// Timer
+let seconds = 0;
+const timerEl = document.getElementById('timer');
+const timerInterval = setInterval(() => {
+  seconds++;
+  const m = String(Math.floor(seconds/60)).padStart(2,'0');
+  const s = String(seconds%60).padStart(2,'0');
+  timerEl.textContent = `⏱ ${m}:${s}`;
+}, 1000);
+
+// Score
+async function updateScore() {
+  const player = getPlayer();
+  if (!player) return;
+  try {
+    const sb = await API.scoreboard();
+    const me = sb.find(p => p.name === player);
+    if (me) document.getElementById('score-chip').textContent = `💎 ${me.score}`;
+  } catch {}
+}
+updateScore();
+
+// Submit FLAG
+document.getElementById('flag-submit-btn').addEventListener('click', submitFlag);
+document.getElementById('flag-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitFlag();
+});
+
+async function submitFlag() {
+  const flag = document.getElementById('flag-input').value.trim();
+  const resultEl = document.getElementById('submit-result');
+  if (!flag) return;
+  const player = await requirePlayer();
+  if (!player) return;
+
+  try {
+    await API.enter(roomId);
+  } catch {}
+
+  try {
+    const res = await API.submit(flag);
+    if (res.success) {
+      resultEl.style.color = 'var(--green)';
+      resultEl.textContent = res.message;
+      document.getElementById('flag-input').value = '';
+      toast(`🎉 ${res.message}`, 'success', 5000);
+      updateScore();
+
+      if (res.new_achievements && res.new_achievements.length > 0) {
+        for (const a of res.new_achievements) {
+          setTimeout(() => toast(`🏆 成就解鎖：${a.icon} ${a.name}！(+${a.points}pts)`, 'achieve', 6000), 1000);
+        }
+      }
+    } else {
+      resultEl.style.color = 'var(--red)';
+      resultEl.textContent = res.message;
+    }
+  } catch(e) {
+    resultEl.style.color = 'var(--red)';
+    resultEl.textContent = e.message;
+  }
+}
+
+// Fullscreen terminal
+document.getElementById('fullscreen-btn').addEventListener('click', () => {
+  const sidebar = document.getElementById('sidebar');
+  const playBody = document.getElementById('play-body');
+  if (sidebar.style.display === 'none') {
+    sidebar.style.display = '';
+    playBody.style.gridTemplateColumns = '1fr 280px';
+  } else {
+    sidebar.style.display = 'none';
+    playBody.style.gridTemplateColumns = '1fr';
+  }
+  if (window._term) window._term._onResize();
+});
+
+// Init terminal (after DOM ready)
+window.addEventListener('load', async () => {
+  const player = await requirePlayer();
+  if (player) {
+    try { await API.enter(roomId); } catch {}
+  }
+  window._term = new EscapeTerminal('terminal-container', roomId).init();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Escape Docker 🐳</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 50%, #0d2a1a 0%, var(--bg-dark) 65%);
+      z-index: 0;
+    }
+    .hero > * { position: relative; z-index: 1; }
+
+    .hero-logo {
+      font-size: clamp(3rem, 10vw, 6rem);
+      font-weight: 900;
+      color: var(--green);
+      text-shadow: 0 0 20px var(--green), 0 0 40px var(--green-dim);
+      letter-spacing: -2px;
+      line-height: 1;
+      margin-bottom: 0.5rem;
+    }
+    .hero-sub {
+      font-size: clamp(0.85rem, 2vw, 1.1rem);
+      color: var(--text-dim);
+      margin-bottom: 2.5rem;
+      max-width: 600px;
+    }
+    .hero-story {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--green);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      max-width: 600px;
+      text-align: left;
+      font-size: 0.9rem;
+      line-height: 1.7;
+      color: var(--text-dim);
+      margin-bottom: 2.5rem;
+    }
+    .hero-story strong { color: var(--green); }
+    .hero-story em { color: var(--yellow); font-style: normal; }
+
+    .hero-cta {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .btn-cta {
+      font-size: 1rem;
+      padding: 0.75rem 2rem;
+      border-radius: 8px;
+      border: 2px solid var(--green);
+      background: transparent;
+      color: var(--green);
+      font-family: var(--font-mono);
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+    }
+    .btn-cta:hover {
+      background: var(--green);
+      color: var(--bg-dark);
+      box-shadow: 0 0 20px var(--green-dim);
+      text-decoration: none;
+    }
+    .btn-cta-secondary {
+      border-color: var(--border);
+      color: var(--text-dim);
+    }
+    .btn-cta-secondary:hover {
+      background: var(--bg-hover);
+      color: var(--text-main);
+      box-shadow: none;
+    }
+
+    .stats-row {
+      display: flex;
+      gap: 2rem;
+      margin-top: 3rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .stat-item { text-align: center; }
+    .stat-num { font-size: 2rem; font-weight: 700; color: var(--blue); }
+    .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+    .chapters-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.75rem;
+      max-width: 700px;
+      width: 100%;
+      margin-top: 3rem;
+    }
+    .chapter-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+    .chapter-card:hover { border-color: var(--blue); }
+    .chapter-card .icon { font-size: 1.8rem; margin-bottom: 0.4rem; }
+    .chapter-card .ch-name { font-size: 0.8rem; color: var(--text-dim); }
+    .chapter-card .ch-rooms { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+    /* terminal typing animation */
+    .typing-line {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      margin-top: 2rem;
+      height: 1.2em;
+    }
+    .cursor { display: inline-block; width: 8px; height: 1em; background: var(--green); animation: blink 1s step-end infinite; vertical-align: text-bottom; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-logo">🐳 Escape Docker</div>
+  <p class="hero-sub">Linux 與 Docker 互動式密室逃脫學習系統</p>
+
+  <div class="hero-story">
+    <p>你是一名系統管理員，在凌晨三點收到一封匿名訊息：</p>
+    <br>
+    <p><strong>「我把所有機密分散藏在 12 個容器裡。
+    找到它們，才能解開最終密碼。」</strong></p>
+    <br>
+    <p>每個容器都是一道謎題。
+    從 <em>Linux 基礎</em> 到 <em>Docker 網路</em>，
+    從 <em>SSH 密鑰</em> 到 <em>docker.sock 控制</em>。</p>
+    <br>
+    <p>時鐘正在滴答作響。<strong>你準備好了嗎？</strong></p>
+  </div>
+
+  <div class="hero-cta">
+    <a class="btn-cta" href="map.html">🗺️ 進入地圖</a>
+    <a class="btn-cta btn-cta-secondary" href="scoreboard.html">📊 排行榜</a>
+  </div>
+
+  <div class="chapters-row">
+    <div class="chapter-card">
+      <div class="icon">🌅</div>
+      <div class="ch-name">Chapter 1</div>
+      <div class="ch-rooms">The Awakening<br>3 Rooms · Linux 基礎</div>
+    </div>
+    <div class="chapter-card">
+      <div class="icon">🌐</div>
+      <div class="ch-name">Chapter 2</div>
+      <div class="ch-rooms">The Network<br>3 Rooms · 系統操作</div>
+    </div>
+    <div class="chapter-card">
+      <div class="icon">🐳</div>
+      <div class="ch-name">Chapter 3</div>
+      <div class="ch-rooms">Docker Dimension<br>4 Rooms · Docker 核心</div>
+    </div>
+    <div class="chapter-card">
+      <div class="icon">🔥</div>
+      <div class="ch-name">Chapter 4</div>
+      <div class="ch-rooms">The Deep End<br>2 Rooms · 進階操作</div>
+    </div>
+    <div class="chapter-card">
+      <div class="icon">💀</div>
+      <div class="ch-name">Final Boss</div>
+      <div class="ch-rooms">The Escape<br>docker.sock</div>
+    </div>
+    <div class="chapter-card">
+      <div class="icon">🔮</div>
+      <div class="ch-name">Secret Rooms</div>
+      <div class="ch-rooms">×2 Hidden<br>找得到才能進</div>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-item">
+      <div class="stat-num">15</div>
+      <div class="stat-label">關卡</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">10</div>
+      <div class="stat-label">成就</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">3650</div>
+      <div class="stat-label">最高分</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">~2hr</div>
+      <div class="stat-label">預估時間</div>
+    </div>
+  </div>
+
+  <div class="typing-line" id="typing-line">$ <span id="typing-text"></span><span class="cursor"></span></div>
+</div>
+
+<div id="toast-container"></div>
+<script src="js/api.js"></script>
+<script>
+  const lines = [
+    'docker compose up -d',
+    'ls -la .hidden/',
+    'sudo -l',
+    'docker ps -a',
+    'curl --unix-socket /var/run/docker.sock http://localhost/containers/json',
+    'grep "Accepted" /var/log/auth.log | awk \'{print $11}\'',
+    'ssh-keygen -t ed25519 -C "ctf_player"',
+    'find / -perm -u=s -type f 2>/dev/null',
+  ];
+  let li = 0, ci = 0, deleting = false;
+  const el = document.getElementById('typing-text');
+  function typeLoop() {
+    const line = lines[li % lines.length];
+    if (!deleting) {
+      el.textContent = line.slice(0, ++ci);
+      if (ci >= line.length) { deleting = true; setTimeout(typeLoop, 2000); return; }
+    } else {
+      el.textContent = line.slice(0, --ci);
+      if (ci <= 0) { deleting = false; li++; setTimeout(typeLoop, 400); return; }
+    }
+    setTimeout(typeLoop, deleting ? 30 : 60);
+  }
+  typeLoop();
+</script>
+</body>
+</html>
