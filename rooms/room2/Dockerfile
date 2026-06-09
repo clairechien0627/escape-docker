@@ -13,9 +13,6 @@ COPY setup.sh /setup.sh
 COPY scripts/ /scripts/
 RUN chmod +x /setup.sh /scripts/*.sh && /setup.sh
 
-ENV FLAG_SEED=escape_docker_dev_seed
-# setup 在 build 時執行，需 ARG 傳入
-# 改用 entrypoint 動態生成
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 

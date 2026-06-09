@@ -188,6 +188,136 @@ rm scoreboard-api/data/scores.db
 
 ---
 
+## 開發者指南
+
+### Container 數量與資源
+
+啟動後共有 **23 個常駐 container**（另有 3 個 ghost 容器跑完即停）：
+
+| 類型 | 數量 | 資源消耗 |
+|------|------|---------|
+| 基礎設施（nginx / terminal-gateway / scoreboard-api）| 3 | 中等（Node.js + Python 常駐）|
+| Room 容器（room0–11、final、secret-a/b、vault）| 17 | 極低（idle bash，各約 10–20 MB）|
+| Helper（locked-server、secret-server）| 2 | 很低（SSH + Python HTTP）|
+| Ghost 容器（alpha/beta/gamma）| 3 | 幾乎零（跑完立刻停止）|
+
+整體記憶體約 **600–900 MB**，現代筆電不需擔心效能。
+
+---
+
+### 啟動 / 停止遊戲
+
+```bash
+# 啟動（第一次會 build image，約 10–15 min）
+bash start.sh          # Linux / macOS
+.\start.ps1            # Windows PowerShell
+
+# 停止，保留容器狀態（之後 docker compose start 可快速恢復）
+docker compose stop
+
+# 停止 + 刪除所有容器（保留 image 和玩家資料）
+docker compose down
+
+# 停止 + 刪除容器 + 刪除玩家資料庫（完全重置）
+docker compose down -v
+
+# 重新啟動整個遊戲（不重 build）
+docker compose restart
+```
+
+---
+
+### 修改單一 Room 後重 build
+
+每個 room 都是獨立 image，修改後只需重 build 那個 room，不影響其他 room：
+
+```bash
+# 重 build 並重啟單一 room
+docker compose build --no-cache room1
+docker compose up -d room1
+
+# 同時 build 多個 room
+docker compose build --no-cache room0 room1 room2
+docker compose up -d room0 room1 room2
+```
+
+> **注意**：修改 `.sh` 腳本後務必用 `--no-cache`，否則 Docker 可能使用舊的快取 layer。
+
+---
+
+### 修改前端（HTML / CSS / JS）
+
+前端是純靜態檔案，由 nginx 直接 serve，**不需要重 build image**：
+
+1. 直接編輯 `frontend/` 下的檔案
+2. 瀏覽器強制重新整理（`Ctrl+Shift+R`）即可看到變更
+
+---
+
+### 修改 scoreboard-api（Python）
+
+```bash
+# 重 build API
+docker compose build --no-cache scoreboard-api
+docker compose up -d scoreboard-api
+```
+
+資料庫檔案在 `scoreboard-api/data/scores.db`，重 build 不會刪除資料。  
+若要重置所有玩家進度：
+
+```bash
+rm scoreboard-api/data/scores.db   # Linux / macOS
+del scoreboard-api\data\scores.db  # Windows
+docker compose restart scoreboard-api
+```
+
+---
+
+### 查看日誌 / 除錯
+
+```bash
+# 查看所有服務狀態（確認哪些是 Up / Exited）
+docker compose ps
+
+# 即時查看某 room 的日誌
+docker compose logs -f room1
+
+# 進入 room 容器排查問題（以 root 身分）
+docker exec -it --user root room1 bash
+
+# 查看 terminal-gateway 連線日誌
+docker compose logs -f terminal-gateway
+
+# 查看 scoreboard-api 請求日誌
+docker compose logs -f scoreboard-api
+```
+
+---
+
+### FLAG 不對時的排查流程
+
+FLAG 格式：`EscapeDocker{sha256(FLAG_SEED + "-" + roomId)[:16]}`
+
+```bash
+# 確認目前 .env 的 FLAG_SEED
+grep FLAG_SEED .env
+
+# 手動算某 room 的正確 FLAG（在任意 bash 裡）
+echo "your_seed-room0" | sha256sum | cut -c1-16
+
+# Admin Panel 查看所有正確 FLAG
+# 瀏覽器開啟 http://localhost/admin.html
+```
+
+若 room 裡的 FLAG 與 admin 不符，表示那個 room 的 image 是用舊 seed build 的，執行：
+
+```bash
+docker compose build --no-cache <room_name>
+docker compose up -d <room_name>
+```
+
+---
+
 ## 目錄結構
 
 ```

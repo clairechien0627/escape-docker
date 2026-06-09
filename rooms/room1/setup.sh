@@ -1,9 +1,5 @@
-﻿#!/bin/bash
+#!/bin/bash
 set -e
-
-FLAG=$(echo "${FLAG_SEED}-room1" | sha256sum | cut -c1-16)
-FLAG_VAL="EscapeDocker{${FLAG}}"
-FLAG_B64=$(echo -n "$FLAG_VAL" | base64)
 
 # ── 生成大量假檔案（干擾用）──
 generate_fake_files() {
@@ -24,7 +20,7 @@ generate_fake_files /home/player/archive
 # 藏在比較深的路徑
 HIDE_DIR="/home/player/archive/dir_037/backups/2023"
 mkdir -p "$HIDE_DIR"
-echo "$FLAG_B64" > "$HIDE_DIR/system_backup.encoded"
+# FLAG 由 entrypoint.sh 在 runtime 動態寫入
 
 # ── 在一個二進位檔裡用 strings 可以找到提示 ──
 python3 -c "

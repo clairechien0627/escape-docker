@@ -10,11 +10,12 @@ RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "120";\n' > /etc/apt/a
 RUN useradd -m -s /bin/bash -u 1000 player
 
 COPY setup.sh /setup.sh
-RUN chmod +x /setup.sh
+RUN chmod +x /setup.sh && /setup.sh
 
-ENV FLAG_SEED=escape_docker_dev_seed
-RUN /setup.sh
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 USER player
 WORKDIR /home/player
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/bin/bash", "--login"]

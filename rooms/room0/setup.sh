@@ -1,8 +1,5 @@
-﻿#!/bin/bash
+#!/bin/bash
 set -e
-
-FLAG=$(echo "${FLAG_SEED}-room0" | sha256sum | cut -c1-16)
-FLAG_VAL="EscapeDocker{${FLAG}}"
 
 # ── Welcome message (motd) ──
 cat > /etc/motd << 'MOTD'
@@ -57,13 +54,6 @@ TXT
 # ── Hidden hint ──
 mkdir -p /etc/escape-docker
 echo "很好，你找到了進階提示！FLAG 就藏在 /etc/motd 裡面，仔細找找。" > /etc/escape-docker/hint.txt
-
-# ── Append FLAG to motd ──
-echo "" >> /etc/motd
-echo "  ─────────────────────────────────────────────────" >> /etc/motd
-echo "  FLAG: ${FLAG_VAL}" >> /etc/motd
-echo "  ─────────────────────────────────────────────────" >> /etc/motd
-echo "" >> /etc/motd
 
 # ── .bashrc 加入提示和工具函數 ──
 cat >> /home/player/.bashrc << 'BASHRC'

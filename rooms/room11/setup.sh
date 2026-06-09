@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 set -e
 mkdir -p /var/log
 touch /var/log/encrypt.log
