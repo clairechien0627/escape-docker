@@ -17,7 +17,7 @@ async function apiFetch(path, options = {}) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || `HTTP ${res.status}`);
+    throw new Error(err.detail || err.error || `HTTP ${res.status}`);
   }
   return res.json();
 }
@@ -37,6 +37,8 @@ const API = {
   player: (name) => apiFetch(`/player/${encodeURIComponent(name || getPlayer())}`),
 
   rooms: () => apiFetch('/rooms'),
+
+  roomsStatus: () => apiFetch('/rooms/status'),
 
   hints: (room_id) => apiFetch(`/hints/${room_id}`),
 

@@ -34,6 +34,9 @@ services:
       - game_net
     environment:
       - NODE_ENV=production
+      - ROOM_MANAGER_URL=http://room-manager:4000
+    depends_on:
+      - room-manager
     restart: unless-stopped
 
   # ──────────────── Scoreboard API ────────────────
@@ -47,6 +50,21 @@ services:
     environment:
       - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-admin_dev_token}
+    restart: unless-stopped
+
+  # ──────────────── Room Manager ────────────────
+  room-manager:
+    build: ./room-manager
+    container_name: room-manager
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - game_net
+    environment:
+      - PORT=4000
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-admin_dev_token}
+      - ROOM_STOP_IDLE_MINUTES=${ROOM_STOP_IDLE_MINUTES:-10}
+      - ROOM_RESET_IDLE_MINUTES=${ROOM_RESET_IDLE_MINUTES:-60}
     restart: unless-stopped
 
   # ══════════════ Chapter 1：The Awakening ══════════════

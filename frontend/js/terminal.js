@@ -65,6 +65,7 @@ class EscapeTerminal {
     const wsUrl = `${proto}://${location.host}/ws?room=${this.roomId}`;
 
     this.term.writeln('\x1b[33mConnecting to container...\x1b[0m');
+    this._showLoadingOverlay('正在啟動房間環境，請稍候（約 5-10 秒）...');
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
@@ -73,16 +74,40 @@ class EscapeTerminal {
     };
 
     this.ws.onmessage = (ev) => {
+      let msg = null;
+      try {
+        msg = JSON.parse(ev.data);
+      } catch {
+        // 非 JSON：原始終端機輸出
+      }
+
+      if (msg && msg.type === 'status' && msg.message === 'starting') {
+        this._showLoadingOverlay('正在啟動房間環境，請稍候（約 5-10 秒）...');
+        return;
+      }
+      if (msg && msg.type === 'ready') {
+        this._hideLoadingOverlay();
+        return;
+      }
+      if (msg && msg.type === 'error') {
+        this._hideLoadingOverlay();
+        this.term.writeln(`\r\n\x1b[31m[ERROR] ${msg.message}\x1b[0m\r\n`);
+        return;
+      }
+
+      this._hideLoadingOverlay();
       this.term.write(ev.data);
     };
 
     this.ws.onclose = () => {
       this.connected = false;
+      this._hideLoadingOverlay();
       this.term.writeln('\r\n\x1b[33m[Connection closed. Press any key to reconnect.]\x1b[0m');
       this.term.onKey(() => this._connect());
     };
 
     this.ws.onerror = () => {
+      this._hideLoadingOverlay();
       this.term.writeln('\r\n\x1b[31m[Connection error. Is the container running?]\x1b[0m');
     };
 
@@ -92,6 +117,18 @@ class EscapeTerminal {
         this.ws.send(data);
       }
     });
+  }
+
+  _showLoadingOverlay(text) {
+    const overlay = document.getElementById('terminal-loading-overlay');
+    if (!overlay) return;
+    if (text) document.getElementById('terminal-loading-text').textContent = text;
+    overlay.classList.remove('hidden');
+  }
+
+  _hideLoadingOverlay() {
+    const overlay = document.getElementById('terminal-loading-overlay');
+    if (overlay) overlay.classList.add('hidden');
   }
 
   _onResize() {

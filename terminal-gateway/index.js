@@ -2,6 +2,7 @@ const WebSocket = require('ws');
 const http = require('http');
 const url = require('url');
 const { spawnTerminal, resizeTerminal, killTerminal } = require('./docker-exec');
+const { ensureRoom, heartbeat, release } = require('./room-manager-client');
 
 const PORT = process.env.PORT || 3001;
 
@@ -12,7 +13,7 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocket.Server({ server });
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
   const params = new url.URL(req.url, `http://localhost:${PORT}`).searchParams;
   const roomId = params.get('room');
 
@@ -24,6 +25,17 @@ wss.on('connection', (ws, req) => {
 
   console.log(`[Terminal] New connection → room: ${roomId}`);
 
+  ws.send(JSON.stringify({ type: 'status', message: 'starting' }));
+
+  try {
+    await ensureRoom(roomId);
+  } catch (err) {
+    console.error(`[Terminal] ensureRoom failed for ${roomId}: ${err.message}`);
+    ws.send(JSON.stringify({ type: 'error', message: `房間啟動失敗：${err.message}` }));
+    ws.close();
+    return;
+  }
+
   let pty = null;
 
   try {
@@ -33,6 +45,10 @@ wss.on('connection', (ws, req) => {
     ws.close();
     return;
   }
+
+  ws.send(JSON.stringify({ type: 'ready' }));
+
+  const heartbeatInterval = setInterval(() => heartbeat(roomId), 30000);
 
   // pty stdout → WebSocket
   pty.onData((data) => {
@@ -64,6 +80,8 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     console.log(`[Terminal] Connection closed → room: ${roomId}`);
+    clearInterval(heartbeatInterval);
+    release(roomId);
     if (pty) killTerminal(pty);
   });
 

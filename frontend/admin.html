@@ -53,6 +53,18 @@
     </div>
   </div>
 
+  <!-- Room Management -->
+  <div class="section-title">🏠 房間管理</div>
+  <div class="card mb-2" id="room-manager-section">
+    <h2>房間管理</h2>
+    <table id="room-status-table">
+      <thead>
+        <tr><th>房間</th><th>狀態</th><th>操作</th></tr>
+      </thead>
+      <tbody id="room-status-body"></tbody>
+    </table>
+  </div>
+
   <!-- Scoreboard -->
   <div class="section-title">📊 排行榜</div>
   <div class="card mb-2"><table id="scoreboard-table"><thead><tr><th>名次</th><th>玩家</th><th>分數</th><th>FLAGS</th><th>最後提交</th></tr></thead><tbody></tbody></table></div>
@@ -115,6 +127,46 @@ async function loadDashboard() {
   }
 }
 
+async function loadRoomStatus() {
+  const tbody = document.getElementById('room-status-body');
+  if (!tbody) return;
+  try {
+    const status = await apiFetch('/rooms/status');
+    tbody.innerHTML = '';
+    for (const [roomId, info] of Object.entries(status)) {
+      const tr = document.createElement('tr');
+      const label = info.state === 'running' ? '🟢 運行中'
+        : info.state === 'starting' ? '🟡 啟動中'
+        : '⚪ 待命中';
+      tr.innerHTML = `
+        <td>${roomId}</td>
+        <td>${label}</td>
+        <td><button data-room-id="${roomId}" class="btn room-reset-btn">重置</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+    tbody.querySelectorAll('.room-reset-btn').forEach((btn) => {
+      btn.addEventListener('click', () => resetRoom(btn.dataset.roomId));
+    });
+  } catch (e) {
+    toast(`載入房間狀態失敗：${e.message}`, 'error');
+  }
+}
+
+async function resetRoom(roomId) {
+  if (!confirm(`確定要重置房間 ${roomId}？這會清除玩家在房間內的所有變更。`)) return;
+  try {
+    await apiFetch(`/rooms/${roomId}/reset`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': adminToken },
+    });
+    toast(`房間 ${roomId} 已重置`, 'success');
+    loadRoomStatus();
+  } catch (e) {
+    toast(`重置失敗：${e.message}`, 'error');
+  }
+}
+
 document.getElementById('login-btn').addEventListener('click', async () => {
   adminToken = document.getElementById('token-input').value.trim();
   if (!adminToken) return;
@@ -123,10 +175,16 @@ document.getElementById('login-btn').addEventListener('click', async () => {
     document.getElementById('login-section').style.display = 'none';
     document.getElementById('dashboard-section').style.display = 'block';
     loadDashboard();
+    loadRoomStatus();
   } catch { toast('Token 錯誤', 'error'); }
 });
 
-document.getElementById('refresh-btn').addEventListener('click', loadDashboard);
+document.getElementById('refresh-btn').addEventListener('click', () => {
+  loadDashboard();
+  loadRoomStatus();
+});
+
+setInterval(loadRoomStatus, 15000);
 </script>
 </body>
 </html>

@@ -37,6 +37,12 @@
       position: relative;
       overflow: hidden;
     }
+    .room-badge {
+      position: absolute;
+      top: 8px; left: 10px;
+      font-size: 0.85rem;
+      z-index: 2;
+    }
     .room-card:hover:not(.locked) {
       border-color: var(--blue);
       transform: translateY(-2px);
@@ -233,7 +239,9 @@ async function loadMap() {
 
         const card = document.createElement('div');
         card.className = `room-card${isLocked ? ' locked' : ''}${isCompleted ? ' completed' : ''}${isSecret ? ' secret-room' : ''}`;
+        card.dataset.roomId = rid;
         card.innerHTML = `
+          <div class="room-badge" id="badge-${rid}">⚪</div>
           <div class="room-icon">${meta.icon}</div>
           <div class="room-id">${rid.toUpperCase()}</div>
           <div class="room-name">${meta.name}</div>
@@ -256,7 +264,30 @@ async function loadMap() {
   }
 }
 
-loadMap();
+async function updateRoomBadges() {
+  try {
+    const status = await API.roomsStatus();
+    for (const [roomId, info] of Object.entries(status)) {
+      const badge = document.getElementById(`badge-${roomId}`);
+      if (!badge) continue;
+      if (info.state === 'running') {
+        badge.textContent = '🟢';
+        badge.title = '運行中';
+      } else if (info.state === 'starting') {
+        badge.textContent = '🟡';
+        badge.title = '啟動中';
+      } else {
+        badge.textContent = '⚪';
+        badge.title = '待命中（進入後自動喚醒）';
+      }
+    }
+  } catch (e) {
+    // 房間狀態非關鍵資訊，輪詢失敗時靜默忽略
+  }
+}
+
+loadMap().then(updateRoomBadges);
+setInterval(updateRoomBadges, 12000);
 </script>
 </body>
 </html>

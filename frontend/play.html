@@ -43,6 +43,26 @@
       overflow: hidden;
       height: 100%;
     }
+    #terminal-panel {
+      position: relative;
+      height: 100%;
+    }
+    .terminal-loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(13, 17, 23, 0.85);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      z-index: 10;
+    }
+    .terminal-loading-overlay.hidden {
+      display: none;
+    }
     .xterm { height: 100% !important; }
     .xterm-viewport { overflow-y: hidden !important; }
 
@@ -157,7 +177,13 @@
   <div class="play-body" id="play-body">
 
     <!-- xterm.js terminal -->
-    <div id="terminal-container"></div>
+    <div id="terminal-panel">
+      <div id="terminal-container"></div>
+      <div id="terminal-loading-overlay" class="terminal-loading-overlay hidden">
+        <div class="spinner"></div>
+        <div id="terminal-loading-text">正在啟動房間環境，請稍候（約 5-10 秒）...</div>
+      </div>
+    </div>
 
     <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
