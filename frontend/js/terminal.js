@@ -13,6 +13,7 @@ class EscapeTerminal {
     this.term = null;
     this.fitAddon = null;
     this.connected = false;
+    this.reconnecting = false;
   }
 
   init() {
@@ -46,6 +47,7 @@ class EscapeTerminal {
       },
       scrollback: 5000,
       allowTransparency: false,
+      copyOnSelect: true,
     });
 
     this.fitAddon = new FitAddon.FitAddon();
@@ -54,6 +56,38 @@ class EscapeTerminal {
     const el = document.getElementById(this.containerId);
     this.term.open(el);
     this.fitAddon.fit();
+
+    // Ctrl+C：有選取文字時複製到剪貼簿，否則照常送出 SIGINT
+    // Ctrl+Shift+V：從剪貼簿貼上到終端機
+    this.term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true;
+
+      if (e.ctrlKey && !e.shiftKey && e.key === 'c') {
+        if (this.term.hasSelection()) {
+          navigator.clipboard.writeText(this.term.getSelection()).catch(() => {});
+          return false;
+        }
+        return true;
+      }
+
+      if (e.ctrlKey && e.shiftKey && (e.key === 'V' || e.key === 'v')) {
+        navigator.clipboard.readText().then((text) => {
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(text);
+          }
+        }).catch(() => {});
+        return false;
+      }
+
+      return true;
+    });
+
+    // Forward keystrokes to server（註冊一次，內部動態取用 this.ws，避免重連後重複註冊）
+    this.term.onData((data) => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(data);
+      }
+    });
 
     window.addEventListener('resize', () => this._onResize());
     this._connect();
@@ -70,6 +104,8 @@ class EscapeTerminal {
 
     this.ws.onopen = () => {
       this.connected = true;
+      this.reconnecting = false;
+      this._hideDisconnectBanner();
       this._onResize();
     };
 
@@ -102,21 +138,19 @@ class EscapeTerminal {
     this.ws.onclose = () => {
       this.connected = false;
       this._hideLoadingOverlay();
-      this.term.writeln('\r\n\x1b[33m[Connection closed. Press any key to reconnect.]\x1b[0m');
-      this.term.onKey(() => this._connect());
+      this.term.writeln('\r\n\x1b[33m[Connection closed.]\x1b[0m');
+      this._showDisconnectBanner('⚠️ 連線中斷，正在重新連線...');
+
+      if (!this.reconnecting) {
+        this.reconnecting = true;
+        setTimeout(() => this._connect(), 3000);
+      }
     };
 
     this.ws.onerror = () => {
       this._hideLoadingOverlay();
       this.term.writeln('\r\n\x1b[31m[Connection error. Is the container running?]\x1b[0m');
     };
-
-    // Forward keystrokes to server
-    this.term.onData((data) => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(data);
-      }
-    });
   }
 
   _showLoadingOverlay(text) {
@@ -129,6 +163,18 @@ class EscapeTerminal {
   _hideLoadingOverlay() {
     const overlay = document.getElementById('terminal-loading-overlay');
     if (overlay) overlay.classList.add('hidden');
+  }
+
+  _showDisconnectBanner(text) {
+    const banner = document.getElementById('terminal-disconnect-banner');
+    if (!banner) return;
+    if (text) banner.textContent = text;
+    banner.classList.remove('hidden');
+  }
+
+  _hideDisconnectBanner() {
+    const banner = document.getElementById('terminal-disconnect-banner');
+    if (banner) banner.classList.add('hidden');
   }
 
   _onResize() {

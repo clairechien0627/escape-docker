@@ -17,7 +17,6 @@ RUN chmod +x /setup.sh
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-USER player
 WORKDIR /home/player
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/bin/bash", "--login"]

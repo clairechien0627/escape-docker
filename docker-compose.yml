@@ -23,6 +23,12 @@ services:
     networks:
       - game_net
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   # ──────────────── Web Terminal Gateway ────────────────
   terminal-gateway:
@@ -38,6 +44,12 @@ services:
     depends_on:
       - room-manager
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ──────────────── Scoreboard API ────────────────
   scoreboard-api:
@@ -51,6 +63,12 @@ services:
       - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
       - ADMIN_TOKEN=${ADMIN_TOKEN:-admin_dev_token}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/scoreboard')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ──────────────── Room Manager ────────────────
   room-manager:
@@ -135,6 +153,8 @@ services:
     hostname: locked-server
     networks:
       - ssh_net
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
     restart: unless-stopped
 
   room5:
@@ -255,7 +275,7 @@ services:
     hostname: vault
     command: >
       sh -c "
-        FLAG=$$(echo '${FLAG_SEED:-escape_docker_dev_seed}-final' | sha256sum | cut -c1-16) &&
+        FLAG=$$(echo -n '${FLAG_SEED:-escape_docker_dev_seed}-final' | sha256sum | cut -c1-16) &&
         echo \"EscapeDocker{$${FLAG}}\" > /final_flag.txt &&
         echo '=== VAULT ===' &&
         echo 'This is the vault. The final flag is secured here.' &&

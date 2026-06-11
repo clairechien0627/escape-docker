@@ -1,7 +1,7 @@
 #!/bin/bash
 export FLAG_SEED="${FLAG_SEED:-escape_docker_dev_seed}"
 
-FLAG=$(echo "${FLAG_SEED}-room11" | sha256sum | cut -c1-16)
+FLAG=$(echo -n "${FLAG_SEED}-room11" | sha256sum | cut -c1-16)
 FLAG_VAL="EscapeDocker{${FLAG}}"
 
 # 把 FLAG 寫入 /secret/data（root 只讀）
@@ -17,4 +17,5 @@ chmod 644 /etc/cron.d/encrypt_job
 # 啟動 cron daemon
 service cron start 2>/dev/null || cron
 
-exec "$@"
+# entrypoint 以 root 執行才能寫入 /secret 與設定 cron，最後切換成 player 給玩家使用
+exec su - player

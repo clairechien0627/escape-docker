@@ -10,9 +10,9 @@ function getContainerName(roomId) {
 function spawnTerminal(roomId) {
   const container = getContainerName(roomId);
 
-  console.log(`[docker-exec] Spawning: docker exec -it ${container} bash`);
+  console.log(`[docker-exec] Spawning: docker exec -it -u player ${container} bash`);
 
-  const term = pty.spawn('docker', ['exec', '-it', container, 'bash'], {
+  const term = pty.spawn('docker', ['exec', '-it', '-u', 'player', container, 'bash'], {
     name: 'xterm-256color',
     cols: 220,
     rows: 50,

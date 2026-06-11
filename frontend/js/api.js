@@ -74,6 +74,13 @@ function toast(msg, type = 'info', duration = 4000) {
   }, duration);
 }
 
+/* ── Clipboard helper ── */
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text)
+    .then(() => toast('已複製到剪貼簿', 'success', 1500))
+    .catch(() => toast('複製失敗', 'error'));
+}
+
 /* ── Player name gate ── */
 async function requirePlayer(promptMsg = '請輸入你的名字（英文或中文）：') {
   let name = getPlayer();

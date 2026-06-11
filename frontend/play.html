@@ -63,6 +63,22 @@
     .terminal-loading-overlay.hidden {
       display: none;
     }
+    .terminal-disconnect-banner {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 0.4rem 1rem;
+      background: var(--red);
+      color: #1a0000;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-align: center;
+      z-index: 11;
+    }
+    .terminal-disconnect-banner.hidden {
+      display: none;
+    }
     .xterm { height: 100% !important; }
     .xterm-viewport { overflow-y: hidden !important; }
 
@@ -130,7 +146,12 @@
       border-radius: 0 4px 4px 0;
       margin-bottom: 0.4rem;
       display: none;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.5rem;
     }
+    .hint-content.show { display: flex; }
+    .hint-content .hint-text { flex: 1; word-break: break-all; }
     .hint-cost { color: var(--red); font-size: 0.7rem; }
     .hint-cost.free { color: var(--green); }
 
@@ -147,6 +168,12 @@
       cursor: pointer;
     }
     .cmd-tag:hover { border-color: var(--cyan); background: #0d2a2e; }
+    .cmd-copy-btn {
+      margin-left: 0.35rem;
+      cursor: pointer;
+      opacity: 0.6;
+    }
+    .cmd-copy-btn:hover { opacity: 1; }
 
     /* Fullscreen toggle */
     .fullscreen-btn {
@@ -178,6 +205,7 @@
 
     <!-- xterm.js terminal -->
     <div id="terminal-panel">
+      <div id="terminal-disconnect-banner" class="terminal-disconnect-banner hidden">⚠️ 連線中斷，正在重新連線...</div>
       <div id="terminal-container"></div>
       <div id="terminal-loading-overlay" class="terminal-loading-overlay hidden">
         <div class="spinner"></div>
@@ -279,13 +307,27 @@ const cmdsContainer = document.getElementById('cmds-container');
 (ROOM_CMDS[roomId] || []).forEach(cmd => {
   const tag = document.createElement('span');
   tag.className = 'cmd-tag';
-  tag.textContent = cmd;
-  tag.title = 'Click to paste';
-  tag.addEventListener('click', () => {
+  tag.title = '點擊送到終端機';
+
+  const label = document.createElement('span');
+  label.textContent = cmd;
+  label.addEventListener('click', () => {
     if (window._term && window._term.ws && window._term.ws.readyState === WebSocket.OPEN) {
       window._term.ws.send(cmd);
     }
   });
+  tag.appendChild(label);
+
+  const copyBtn = document.createElement('span');
+  copyBtn.className = 'cmd-copy-btn';
+  copyBtn.textContent = '📋';
+  copyBtn.title = '複製指令';
+  copyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyToClipboard(cmd);
+  });
+  tag.appendChild(copyBtn);
+
   cmdsContainer.appendChild(tag);
 });
 
@@ -310,15 +352,30 @@ async function loadHints() {
       container.appendChild(wrapper);
 
       btn.addEventListener('click', async () => {
-        if (content.style.display === 'block') {
-          content.style.display = 'none'; return;
+        if (content.classList.contains('show')) {
+          content.classList.remove('show'); return;
         }
         const player = getPlayer();
         if (!player) { toast('請先設定名字', 'error'); return; }
         try {
           const res = await API.useHint(roomId, h.level);
-          content.textContent = res.text;
-          content.style.display = 'block';
+          content.innerHTML = '';
+          const textSpan = document.createElement('span');
+          textSpan.className = 'hint-text';
+          textSpan.textContent = res.text;
+          content.appendChild(textSpan);
+
+          const copyBtn = document.createElement('span');
+          copyBtn.className = 'cmd-copy-btn';
+          copyBtn.textContent = '📋';
+          copyBtn.title = '複製';
+          copyBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            copyToClipboard(res.text);
+          });
+          content.appendChild(copyBtn);
+
+          content.classList.add('show');
           btn.classList.add('used');
           if (!res.already_used && res.cost > 0) {
             toast(`使用提示：-${res.cost} pts`, 'info');
