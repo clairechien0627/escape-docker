@@ -31,11 +31,11 @@ services:
     #   - 額外掛載 /usr/src 與 /lib/modules（如下already掛載）
     # Raspberry Pi / 無 kernel headers 環境：建議用 modern eBPF 驅動
     #   - image 維持 falcosecurity/falco-no-driver:latest
-    #   - 設定環境變數 FALCO_BPF_PROBE="" 並加上 --modern-bpf 參數（見下方 command）
+    #   - 此 image 預設 engine.kind 即為 modern_ebpf，不需額外旗標
+    #     （Falco 0.39+ 已移除 --modern-bpf 旗標，加上會直接啟動失敗）
     #   - 需要 Linux kernel >= 5.8 並啟用 BTF（CONFIG_DEBUG_INFO_BTF=y）
     command:
       - /usr/bin/falco
-      - --modern-bpf
       - -c
       - /etc/falco/falco.yaml
       # 預設載入 full ruleset；basic 模式請改成：

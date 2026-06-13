@@ -257,7 +257,7 @@
     此網路原為隔離網段，出現連線通常代表已透過 docker network connect 加入該網路
   condition: >
     evt.type = connect and container and
-    fd.sip startswith "172.22."
+    fd.snet="172.22.0.0/24"
   output: >
     連線到 secret_net 子網 (dest=%fd.rip:%fd.rport proc=%proc.name container=%container.name)
   priority: WARNING

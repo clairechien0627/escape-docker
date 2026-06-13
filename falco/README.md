@@ -21,13 +21,17 @@ Edge Container Security Lab 的偵測後端設定。這個目錄包含：
 ```yaml
 command:
   - /usr/bin/falco
-  - --modern-bpf
   - -c
   - /etc/falco/falco.yaml
   # basic 模式請加上：
   # - -T
   # - tier_full_only
 ```
+
+> `--modern-bpf` 旗標在 Falco 0.39+ 已移除（加上會導致啟動失敗），
+> `falco-no-driver` image 與 `falco/falco.yaml` 已預設 `engine.kind:
+> modern_ebpf`，不需額外旗標。詳見
+> `troubleshooting/falco-startup-config-bugs.md`。
 
 `off` 模式則是把 `falco.yaml` 的 `rules_file` 中 `/etc/falco/lab_rules.yaml` 那一行移除（或不掛載該檔案）。
 
@@ -143,3 +147,105 @@ syscall，這是 Falco 的標準部署方式（Falco 本身不會修改其他容
 同時保留 `stdout_output` 方便部署初期直接看 log 除錯
 （`docker compose logs -f falco`）。在 lab-api webhook 完成前，
 `http_output` 連線失敗不影響 Falco 本身運作，只是告警不會被轉發。
+
+## 4. Smoke Test 結果記錄（2026-06-13）
+
+第一次實際啟動 `escape-falco`（`docker compose -f docker-compose.yml -f
+falco/docker-compose.falco.example.yml up -d --force-recreate falco`），
+並對 `room6`、`room7`、`secret-b` 跑 `lab/exploits/{room6,secret-b}.sh`
+與數個手動探測指令（`docker exec -u player room6 docker ps` /
+`cat /var/run/docker.sock` / `tar` / `grep` 等），同時 tail Falco 的 JSON
+輸出做比對。
+
+### 4.1 啟動階段：3 個阻擋性設定/規則錯誤（已修復）
+
+依序遇到並修復了 3 個會讓 Falco 完全無法啟動或規則載入失敗的問題：
+
+1. `docker-compose.falco.example.yml` 沿用已移除的 `--modern-bpf` CLI 旗標
+2. `lab_rules.yaml` 的 `Outbound Connection To Secret Network Subnet` 用了
+   `ipaddr` 欄位不支援的 `startswith`/CIDR `in` 語法
+3. 自訂 `falco.yaml` 覆蓋 image 內建設定後缺少 `engine.kind`，退回不存在的
+   `kmod` 驅動
+
+三者修復後 Falco 穩定運作，31 條 `lab_rules.yaml` 規則全部成功載入，並持續
+輸出 JSON Lines 格式告警。詳細的緣由/根因/修復/驗證見
+[`troubleshooting/falco-startup-config-bugs.md`](../troubleshooting/falco-startup-config-bugs.md)。
+
+### 4.2 已驗證可運作的部分
+
+- Falco 能正確攔截 `room6`/`secret-b` 等 container 內的 syscall：
+  default 規則「Terminal shell in container」在這兩次測試中都正確帶出
+  **真實的 container ID**（`secret-b` = `3588c38b871e`、`room6` =
+  `4b3766ec8d4d`），對應 `proc=bash pname=containerd-shim cmd="bash
+  --login"`（即 terminal-gateway 對玩家開的互動式 `docker exec`
+  session）。代表 Falco 的事件擷取與部分 container 解析鏈路是通的。
+
+### 4.3 已知限制：`docker exec <room> bash -c "..."` 產生的事件，container context 大多解析不到
+
+`lab/exploits/*.sh` 的 `room_exec`（以及人工的 `docker exec -u player
+<room> <cmd>`）全部是「短命的 `docker exec` 子行程」模式。這次 smoke test
+中，這類事件絕大多數的 `container.id`／`container.name` 都是
+`null`（少數情況是一個不屬於任何 top-level room container 的神秘 ID
+`1085f6199000`，後來確認是 room8 內層 DinD daemon 的內部 container）。
+
+**影響範圍**（連帶解釋了下列規則在 smoke test 中沒有如預期觸發）：
+
+| 規則 | 對應 scenario | smoke test 結果 |
+|---|---|---|
+| `Docker Socket Accessed From Container` | room6/7/9/final/secret-a | 即使對 room6 執行 `docker ps`、`cat /var/run/docker.sock`（確認指令本身成功執行），仍未觸發 |
+| `Docker Save Or History Executed` | secret-b | `secret-b.sh` 在 room7 執行 `docker save`/`docker history` 時未觸發 |
+| `Tar Extraction Into Tmp Directory` / `Recursive Grep Under Tmp` | secret-b | `secret-b.sh` 對 OCI layer 做 `tar`/`grep` 時未觸發 |
+
+這些規則的 `condition` 都包含 `container`（即 `container.id != host`）。
+當 `container.id` 解析為 `null` 時，這個 macro 為 false，規則整體不成立
+——即使對應的 syscall（`connect`/`open`/`execve`）事件本身確實發生了。
+這與 4.2 的「Terminal shell in container 能正確解出 container ID」形成對比：
+推測差異在於 terminal-gateway 開的是**長駐**的互動 session（Falco 啟動時
+該 process 已存在於 container 的 cgroup 內，可被正常 enrichment），而
+`docker exec ... bash -c "..."` 是**短命**子行程，在 Docker Desktop /
+WSL2 + modern eBPF 驅動的組合下，container enrichment 來不及／無法完成。
+
+另外，`Unexpected Child Process In Container Via Docker Exec` 規則本身還有
+獨立的邏輯缺口：condition 中 `not proc.name in (bash, sh)` 會排除掉
+`docker exec <container> bash -c "<cmd>"` 這種所有 15 支 exploit 腳本共用
+的呼叫模式（被注入的子行程 `pname` 是 `bash`，不是 `containerd-shim`/
+`runc`）。即使 container context 問題修好，這條規則仍不會對這個模式觸發。
+
+兩個問題的詳細記錄與後續建議見
+[`troubleshooting/falco-container-context-not-resolved.md`](../troubleshooting/falco-container-context-not-resolved.md)。
+
+### 4.4 已知雜訊規則
+
+以下規則在沒有任何 exploit 腳本執行的情況下也持續觸發，來源是 host /
+Docker Desktop 內部程序（`runc`、`containerd-shim`、`docker-init`、
+`fstrim`、`iptables` 等），不代表房間內的攻擊行為：
+
+- **DAC Read Search Capability Used**（標記 `room2`，~每分鐘 27 次以上）
+- **Drop and execute new binary in container**（預設規則，主要是
+  `1085f6199000`／room8 內層 DinD 的 `sleep 10` healthcheck 迴圈）
+
+`basic` 模式下這兩條規則仍會載入（前者是 `tier_full_only`，後者是 Falco
+內建預設規則，不受 `lab_rules.yaml` tier 控制），未來 lab-api 若要以
+「規則觸發次數」做量化分析，需要先扣除這類 baseline 雜訊或調整規則的
+`condition`（例如為 DAC Read Search Capability Used 加上更嚴格的
+`proc.name`/路徑限制）。
+
+### 4.5 結論與下一步
+
+- **Falco 部署本身已可用**：修完 3 個設定/規則 bug 後，Falco 能穩定啟動、
+  載入全部規則、輸出 JSON 告警，且確實能看到 room6/secret-b 等 container
+  的真實 syscall。
+- **`falco_rule_refs` ↔ `lab_rules.yaml` 對照表（第 2 節）的規則名稱與
+  tier 標記本身是準確的**（規則確實存在、能載入），但表中多條 `tier_basic`
+  /`tier_full_only` 規則在「`docker exec` 短命子行程」這個（目前所有
+  exploit 腳本採用的）攻擊模式下**實際不會觸發**，原因是 4.3 的 container
+  context 解析缺口，而非規則命名或對照錯誤。
+- 後續建議：
+  1. 若要在目前環境（Docker Desktop + WSL2 + modern eBPF）下讓這些規則
+     真正可用，需要先解決/繞過 container context 解析問題（例如改用
+     `proc.pid`/`proc.vpid` 搭配 host 端 `docker top` 結果做關聯，而非
+     依賴 Falco 自身的 `container.id` 欄位）。
+  2. Raspberry Pi（真實 Linux + 可能改用 kernel module 驅動）上的行為
+     可能不同，待硬體到手後重跑本 smoke test 驗證。
+  3. `Unexpected Child Process In Container Via Docker Exec` 的
+     `not proc.name in (bash, sh)` 排除條件建議在未來修訂規則時一併檢討。

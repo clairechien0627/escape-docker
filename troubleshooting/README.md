@@ -28,3 +28,5 @@
 - [secret-b-oci-layer-format-mismatch.md](secret-b-oci-layer-format-mismatch.md) — Secret Room B walkthrough 的 `find -name "*.tar"` 對現代 Docker 的 OCI 匯出格式找不到任何 layer
 - [secret-a-entrypoint-echo-missing-n.md](secret-a-entrypoint-echo-missing-n.md) — Secret Room A entrypoint.sh 用 `echo` 算 `REAL_FLAG`，導致房間主要解法算出錯誤 FLAG
 - [room8-dind-stale-pid-restart-loop.md](room8-dind-stale-pid-restart-loop.md) — Room 8 DinD 被 OOM-kill 後以 `docker start` 重啟卡在 `/var/run/docker.pid` 重啟迴圈
+- [falco-startup-config-bugs.md](falco-startup-config-bugs.md) — Falco 監控容器首次啟動的 3 個設定/規則問題（--modern-bpf、fd.sip CIDR 語法、engine.kind）
+- [falco-container-context-not-resolved.md](falco-container-context-not-resolved.md) — Falco smoke test：`docker exec` 短命子行程的 container context 大多解析不到，導致多條規則未觸發（已知限制，未修復）

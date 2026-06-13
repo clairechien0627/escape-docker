@@ -8,6 +8,13 @@ rules_file:
   - /etc/falco/rules.d
   - /etc/falco/lab_rules.yaml
 
+# 這份設定檔會整個覆蓋 image 內建的 /etc/falco/falco.yaml（其預設
+# engine.kind 為 modern_ebpf），因此這裡需要明確指定，否則會退回
+# Falco 編譯內建預設值 kmod（kernel module，會嘗試開 /dev/falco0
+# 並失敗：falco-no-driver image 沒有附 kernel module）。
+engine:
+  kind: modern_ebpf
+
 # 以 JSON 輸出，方便 lab-api 解析
 json_output: true
 json_include_output_property: true
