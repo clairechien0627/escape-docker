@@ -1,0 +1,16 @@
+{
+  "name": "escape-docker-lab-api",
+  "version": "1.0.0",
+  "description": "Edge Container Security Lab execution engine (scenario catalog, exploit runner, results store) for Escape Docker",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0"
+  }
+}

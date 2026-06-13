@@ -143,10 +143,16 @@ syscall，這是 Falco 的標準部署方式（Falco 本身不會修改其他容
 ### 3.3 告警輸出
 
 `falco.yaml` 設定 `http_output` 指向
-`http://lab-api:4100/api/lab/falco-webhook`（Phase 2 才會實作該端點），
-同時保留 `stdout_output` 方便部署初期直接看 log 除錯
-（`docker compose logs -f falco`）。在 lab-api webhook 完成前，
-`http_output` 連線失敗不影響 Falco 本身運作，只是告警不會被轉發。
+`http://lab-api:4100/api/lab/falco-webhook`。`lab-api`（見
+`lab-api/README.md`）已實作此端點，目前僅將收到的告警存進記憶體
+（`GET /api/lab/alerts` 可查看最近 500 筆，供除錯）；告警與 exploit
+run 的時間關聯分析待後續階段，且如第 4.3 節所述，目前環境下大部分
+`docker exec` 短命子行程的告警 `container.id` 解析不到，這個關聯分析
+在問題解決前效用有限。同時保留 `stdout_output` 方便部署初期直接看 log
+除錯（`docker compose logs -f falco`）。`escape-falco` 不在主
+`docker-compose.yml` 內常駐（見 `docker-compose.falco.example.yml`），
+若 `escape-falco` 未啟動，`http_output` 連線失敗不影響 Falco 本身運作，
+只是告警不會被轉發。
 
 ## 4. Smoke Test 結果記錄（2026-06-13）
 

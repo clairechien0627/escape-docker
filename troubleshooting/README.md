@@ -30,3 +30,4 @@
 - [room8-dind-stale-pid-restart-loop.md](room8-dind-stale-pid-restart-loop.md) — Room 8 DinD 被 OOM-kill 後以 `docker start` 重啟卡在 `/var/run/docker.pid` 重啟迴圈
 - [falco-startup-config-bugs.md](falco-startup-config-bugs.md) — Falco 監控容器首次啟動的 3 個設定/規則問題（--modern-bpf、fd.sip CIDR 語法、engine.kind）
 - [falco-container-context-not-resolved.md](falco-container-context-not-resolved.md) — Falco smoke test：`docker exec` 短命子行程的 container context 大多解析不到，導致多條規則未觸發（已知限制，未修復）
+- [common-sh-duration-ms-busybox-date.md](common-sh-duration-ms-busybox-date.md) — `lab/exploits/lib/common.sh` 在 lab-api 的 alpine 容器（BusyBox date）上 `duration_ms` 永遠算成 0

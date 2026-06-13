@@ -85,6 +85,25 @@ services:
       - ROOM_RESET_IDLE_MINUTES=${ROOM_RESET_IDLE_MINUTES:-60}
     restart: unless-stopped
 
+  # ──────────────── Lab API（Edge Container Security Lab）────────────────
+  lab-api:
+    build: ./lab-api
+    container_name: lab-api
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./lab:/app/lab:ro
+      - ./lab-api/data:/app/data
+    networks:
+      - game_net
+    environment:
+      - PORT=4100
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-admin_dev_token}
+      - ROOM_MANAGER_URL=http://room-manager:4000
+      - LAB_DIR=/app/lab
+    depends_on:
+      - room-manager
+    restart: unless-stopped
+
   # ══════════════ Chapter 1：The Awakening ══════════════
 
   room0:
