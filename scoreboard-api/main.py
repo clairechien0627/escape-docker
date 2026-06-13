@@ -1,8 +1,7 @@
 import os
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
-from typing import Optional
 
 import database as db
 from flags import FLAGS, ROOM_META, HINTS
@@ -28,43 +27,75 @@ def startup():
 # Models
 # ─────────────────────────────────────────────
 
-class RegisterRequest(BaseModel):
+class AuthRegisterRequest(BaseModel):
+    student_id: str
     name: str
-    avatar: Optional[str] = "🐳"
+    avatar: str = "🐳"
+
+    @field_validator("student_id")
+    @classmethod
+    def student_id_not_empty(cls, v):
+        v = v.strip()
+        if not v or len(v) > 30:
+            raise ValueError("學號需為 1-30 個字元")
+        return v
 
     @field_validator("name")
     @classmethod
     def name_not_empty(cls, v):
         v = v.strip()
         if not v or len(v) > 30:
-            raise ValueError("名字需為 1-30 個字元")
+            raise ValueError("暱稱需為 1-30 個字元")
         return v
 
 
 class SubmitRequest(BaseModel):
-    player_name: str
     flag: str
 
 
 class HintRequest(BaseModel):
-    player_name: str
     room_id: str
     level: int  # 1, 2, 3
 
 
 class RoomEntryRequest(BaseModel):
-    player_name: str
     room_id: str
+
+
+def get_current_player(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+
+    token = authorization.removeprefix("Bearer ").strip()
+    player = db.get_player_by_token(token)
+    if player is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    return player
 
 
 # ─────────────────────────────────────────────
 # 玩家
 # ─────────────────────────────────────────────
 
-@app.post("/register")
-def register(req: RegisterRequest):
-    db.ensure_player(req.name, req.avatar or "🐳")
-    return {"ok": True, "name": req.name}
+@app.post("/auth/register")
+def auth_register(req: AuthRegisterRequest):
+    row, _ = db.register_or_login(req.student_id, req.name, req.avatar)
+    return {
+        "token": row["token"],
+        "student_id": row["student_id"],
+        "name": row["name"],
+        "avatar": row["avatar"],
+    }
+
+
+@app.get("/auth/me")
+def auth_me(player=Depends(get_current_player)):
+    return {
+        "student_id": player["student_id"],
+        "name": player["name"],
+        "avatar": player["avatar"],
+    }
 
 
 # ─────────────────────────────────────────────
@@ -72,21 +103,21 @@ def register(req: RegisterRequest):
 # ─────────────────────────────────────────────
 
 @app.post("/submit")
-def submit_flag(req: SubmitRequest):
+def submit_flag(req: SubmitRequest, player=Depends(get_current_player)):
+    player_name = player["student_id"]
+
     flag_info = FLAGS.get(req.flag.strip())
 
     if not flag_info:
         return {"success": False, "message": "FLAG 錯誤，再試一次！", "points": 0}
 
-    db.ensure_player(req.player_name)
-
-    if db.already_submitted(req.player_name, flag_info["id"]):
+    if db.already_submitted(player_name, flag_info["id"]):
         return {"success": False, "message": f"你已經提交過 {flag_info['id']} 了！", "points": 0}
 
-    db.add_submission(req.player_name, flag_info["id"], flag_info["room"], flag_info["points"])
-    db.record_room_completion(req.player_name, flag_info["room"])
+    db.add_submission(player_name, flag_info["id"], flag_info["room"], flag_info["points"])
+    db.record_room_completion(player_name, flag_info["room"])
 
-    new_achv = check_and_award(req.player_name, flag_info["room"], flag_info["id"])
+    new_achv = check_and_award(player_name, flag_info["room"], flag_info["id"])
 
     return {
         "success": True,
@@ -106,7 +137,7 @@ def scoreboard():
     rows = db.get_scoreboard()
     result = []
     for i, row in enumerate(rows):
-        achvs = db.get_player_achievements(row["name"])
+        achvs = db.get_player_achievements(row["student_id"])
         bonus = sum(
             a["points"] for a in ALL_ACHIEVEMENTS if a["id"] in achvs
         )
@@ -131,11 +162,15 @@ def scoreboard():
 # 玩家進度
 # ─────────────────────────────────────────────
 
-@app.get("/player/{name}")
-def player_progress(name: str):
-    flags_done = db.get_player_flags(name)
-    achvs = db.get_player_achievements(name)
+@app.get("/player/me")
+def player_progress(player=Depends(get_current_player)):
+    student_id = player["student_id"]
+    flags_done = db.get_player_flags(student_id)
+    achvs = db.get_player_achievements(student_id)
     flags_done_set = set(flags_done)
+
+    base_score = sum(f["points"] for f in FLAGS.values() if f["id"] in flags_done_set)
+    achievement_bonus = sum(a["points"] for a in ALL_ACHIEVEMENTS if a["id"] in achvs)
 
     rooms = []
     for room in ROOM_META:
@@ -145,7 +180,7 @@ def player_progress(name: str):
             for f in FLAGS.values()
             if f["room"] == room["id"]
         )
-        hints_used = db.get_player_hints_used(name, room["id"])
+        hints_used = db.get_player_hints_used(student_id, room["id"])
         rooms.append({
             "id": room["id"],
             "name": room["name"],
@@ -157,9 +192,12 @@ def player_progress(name: str):
         })
 
     return {
-        "name": name,
+        "student_id": player["student_id"],
+        "name": player["name"],
+        "avatar": player["avatar"],
         "flags": flags_done,
         "achievements": achvs,
+        "score": base_score + achievement_bonus,
         "rooms": rooms,
     }
 
@@ -178,7 +216,9 @@ def list_rooms():
 # ─────────────────────────────────────────────
 
 @app.post("/hint")
-def use_hint(req: HintRequest):
+def use_hint(req: HintRequest, player=Depends(get_current_player)):
+    player_name = player["student_id"]
+
     room_hints = HINTS.get(req.room_id)
     if not room_hints:
         raise HTTPException(status_code=404, detail="此房間沒有提示")
@@ -187,12 +227,11 @@ def use_hint(req: HintRequest):
     if not hint:
         raise HTTPException(status_code=404, detail="無效的提示等級")
 
-    already = db.get_player_hints_used(req.player_name, req.room_id)
+    already = db.get_player_hints_used(player_name, req.room_id)
     if req.level in already:
         return {"text": hint["text"], "cost": 0, "already_used": True}
 
-    db.ensure_player(req.player_name)
-    db.record_hint(req.player_name, req.room_id, req.level, hint["cost"])
+    db.record_hint(player_name, req.room_id, req.level, hint["cost"])
 
     return {"text": hint["text"], "cost": hint["cost"], "already_used": False}
 
@@ -208,9 +247,8 @@ def get_hints_meta(room_id: str):
 # ─────────────────────────────────────────────
 
 @app.post("/enter")
-def enter_room(req: RoomEntryRequest):
-    db.ensure_player(req.player_name)
-    db.record_room_entry(req.player_name, req.room_id)
+def enter_room(req: RoomEntryRequest, player=Depends(get_current_player)):
+    db.record_room_entry(player["student_id"], req.room_id)
     return {"ok": True}
 
 

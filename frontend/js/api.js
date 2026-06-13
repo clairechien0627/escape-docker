@@ -1,40 +1,69 @@
 /* ══ Escape Docker API Client ══ */
 
 const API_BASE = '/api';
+const TOKEN_KEY = 'edgerange_token';
 
-function getPlayer() {
-  return localStorage.getItem('escape_docker_player') || null;
+let _profileCache = null;
+
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY) || null;
 }
 
-function setPlayer(name) {
-  localStorage.setItem('escape_docker_player', name);
+function setToken(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+  _profileCache = null;
+}
+
+function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+  _profileCache = null;
 }
 
 async function apiFetch(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  const token = getToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers,
     ...options,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || err.error || `HTTP ${res.status}`);
+    const error = new Error(err.detail || err.error || `HTTP ${res.status}`);
+    error.status = res.status;
+    throw error;
   }
+  if (res.status === 204) return null;
   return res.json();
 }
 
-const API = {
-  register: (name, avatar = '🐳') =>
-    apiFetch('/register', { method: 'POST', body: JSON.stringify({ name, avatar }) }),
+async function getProfile() {
+  if (_profileCache) return _profileCache;
+  if (!getToken()) return null;
+  try {
+    _profileCache = await apiFetch('/auth/me');
+    return _profileCache;
+  } catch (e) {
+    clearToken();
+    return null;
+  }
+}
 
-  submit: (flag) => {
-    const player_name = getPlayer();
-    if (!player_name) throw new Error('未登入，請先輸入名字');
-    return apiFetch('/submit', { method: 'POST', body: JSON.stringify({ player_name, flag }) });
-  },
+const API = {
+  register: (student_id, name, avatar = '🐳') =>
+    apiFetch('/auth/register', { method: 'POST', body: JSON.stringify({ student_id, name, avatar }) }),
+
+  me: () => apiFetch('/auth/me'),
+
+  submit: (flag) =>
+    apiFetch('/submit', { method: 'POST', body: JSON.stringify({ flag }) }),
 
   scoreboard: () => apiFetch('/scoreboard'),
 
-  player: (name) => apiFetch(`/player/${encodeURIComponent(name || getPlayer())}`),
+  player: () => apiFetch('/player/me'),
 
   rooms: () => apiFetch('/rooms'),
 
@@ -42,16 +71,11 @@ const API = {
 
   hints: (room_id) => apiFetch(`/hints/${room_id}`),
 
-  useHint: (room_id, level) => {
-    const player_name = getPlayer();
-    return apiFetch('/hint', { method: 'POST', body: JSON.stringify({ player_name, room_id, level }) });
-  },
+  useHint: (room_id, level) =>
+    apiFetch('/hint', { method: 'POST', body: JSON.stringify({ room_id, level }) }),
 
-  enter: (room_id) => {
-    const player_name = getPlayer();
-    if (!player_name) return Promise.resolve();
-    return apiFetch('/enter', { method: 'POST', body: JSON.stringify({ player_name, room_id }) });
-  },
+  enter: (room_id) =>
+    apiFetch('/enter', { method: 'POST', body: JSON.stringify({ room_id }) }),
 
   achievements: () => apiFetch('/achievements'),
 };
@@ -81,21 +105,12 @@ function copyToClipboard(text) {
     .catch(() => toast('複製失敗', 'error'));
 }
 
-/* ── Player name gate ── */
-async function requirePlayer(promptMsg = '請輸入你的名字（英文或中文）：') {
-  let name = getPlayer();
-  if (!name) {
-    name = window.prompt(promptMsg);
-    if (!name || !name.trim()) { toast('需要輸入名字才能繼續', 'error'); return null; }
-    name = name.trim();
-    try {
-      await API.register(name);
-      setPlayer(name);
-      toast(`歡迎，${name}！`, 'success');
-    } catch (e) {
-      toast(`註冊失敗：${e.message}`, 'error');
-      return null;
-    }
+/* ── Auth gate ── */
+async function requirePlayer() {
+  const profile = await getProfile();
+  if (!profile) {
+    window.location.href = 'index.html';
+    return null;
   }
-  return name;
+  return profile;
 }

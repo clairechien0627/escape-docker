@@ -11,7 +11,7 @@
 
     .play-layout {
       display: grid;
-      grid-template-rows: auto 1fr;
+      grid-template-rows: auto auto 1fr;
       height: 100vh;
     }
     .play-header {
@@ -191,6 +191,8 @@
 
 <div class="play-layout">
 
+  <div id="global-nav"></div>
+
   <!-- Header -->
   <div class="play-header">
     <a class="back-btn btn" href="map.html">← Map</a>
@@ -253,6 +255,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
 <script src="js/api.js"></script>
+<script src="js/nav.js"></script>
 <script src="js/terminal.js"></script>
 <script>
 const ROOM_MISSIONS = {
@@ -355,8 +358,6 @@ async function loadHints() {
         if (content.classList.contains('show')) {
           content.classList.remove('show'); return;
         }
-        const player = getPlayer();
-        if (!player) { toast('請先設定名字', 'error'); return; }
         try {
           const res = await API.useHint(roomId, h.level);
           content.innerHTML = '';
@@ -399,12 +400,10 @@ const timerInterval = setInterval(() => {
 
 // Score
 async function updateScore() {
-  const player = getPlayer();
-  if (!player) return;
+  if (!getToken()) return;
   try {
-    const sb = await API.scoreboard();
-    const me = sb.find(p => p.name === player);
-    if (me) document.getElementById('score-chip').textContent = `💎 ${me.score}`;
+    const progress = await API.player();
+    document.getElementById('score-chip').textContent = `💎 ${progress.score}`;
   } catch {}
 }
 updateScore();

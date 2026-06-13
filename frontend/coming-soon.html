@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>即將推出 — EdgeRange</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="global-nav"></div>
+
+  <div class="card" style="max-width: 480px; margin: 4rem auto; text-align: center;">
+    <div id="module-icon" style="font-size: 3rem; margin-bottom: 0.5rem;"></div>
+    <h1 id="module-name" style="font-size: 1.5rem; color: var(--green); margin-bottom: 0.5rem;"></h1>
+    <p id="module-desc" class="text-dim"></p>
+    <div id="module-phase" class="badge badge-dim" style="margin: 1rem 0;"></div>
+    <div>
+      <a href="index.html" class="btn">← 返回 Hub</a>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+  <script src="js/api.js"></script>
+  <script src="js/modules-meta.js"></script>
+  <script src="js/nav.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const moduleId = params.get('module');
+    const mod = getModule(moduleId);
+
+    if (mod) {
+      document.getElementById('module-icon').textContent = mod.icon;
+      document.getElementById('module-name').textContent = mod.name;
+      document.getElementById('module-desc').textContent = mod.desc;
+      document.getElementById('module-phase').textContent = `🔒 即將推出 (Phase ${mod.phase})`;
+      document.title = `${mod.name} — EdgeRange`;
+    } else {
+      document.getElementById('module-icon').textContent = '❓';
+      document.getElementById('module-name').textContent = '未知模組';
+      document.getElementById('module-desc').textContent = '找不到這個模組的資訊。';
+      document.getElementById('module-phase').textContent = '';
+    }
+  </script>
+</body>
+</html>

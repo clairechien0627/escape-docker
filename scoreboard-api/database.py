@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import secrets
 from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "scores.db")
@@ -17,8 +18,10 @@ def init_db():
     with get_conn() as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS players (
-                name        TEXT PRIMARY KEY,
+                student_id  TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
                 avatar      TEXT DEFAULT '🐳',
+                token       TEXT UNIQUE NOT NULL,
                 joined_at   TEXT DEFAULT (datetime('now'))
             );
 
@@ -62,16 +65,49 @@ def init_db():
 
 # ─── Players ───
 
-def ensure_player(name: str, avatar: str = "🐳"):
-    with get_conn() as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO players (name, avatar) VALUES (?, ?)",
-            (name, avatar)
-        )
-
-
 def get_all_players(conn):
     return conn.execute("SELECT * FROM players ORDER BY joined_at").fetchall()
+
+
+def get_player_by_student_id(student_id: str):
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM players WHERE student_id = ?", (student_id,)
+        ).fetchone()
+
+
+def get_player_by_token(token: str):
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM players WHERE token = ?", (token,)
+        ).fetchone()
+
+
+def register_or_login(student_id: str, name: str, avatar: str = "🐳"):
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT * FROM players WHERE student_id = ?", (student_id,)
+        ).fetchone()
+
+        if existing is None:
+            token = secrets.token_urlsafe(16)
+            conn.execute(
+                "INSERT INTO players (student_id, name, avatar, token) VALUES (?, ?, ?, ?)",
+                (student_id, name, avatar, token),
+            )
+            row = conn.execute(
+                "SELECT * FROM players WHERE student_id = ?", (student_id,)
+            ).fetchone()
+            return row, True
+
+        conn.execute(
+            "UPDATE players SET name = ?, avatar = ? WHERE student_id = ?",
+            (name, avatar, student_id),
+        )
+        row = conn.execute(
+            "SELECT * FROM players WHERE student_id = ?", (student_id,)
+        ).fetchone()
+        return row, False
 
 
 # ─── Submissions ───
@@ -116,14 +152,15 @@ def get_scoreboard():
     with get_conn() as conn:
         rows = conn.execute("""
             SELECT
+                p.student_id,
                 p.name,
                 p.avatar,
                 COALESCE(SUM(s.points), 0) AS total_score,
                 COUNT(s.id) AS flags_found,
                 MAX(s.submitted_at) AS last_submit
             FROM players p
-            LEFT JOIN submissions s ON p.name = s.player_name
-            GROUP BY p.name, p.avatar
+            LEFT JOIN submissions s ON p.student_id = s.player_name
+            GROUP BY p.student_id, p.name, p.avatar
             ORDER BY total_score DESC, last_submit ASC
         """).fetchall()
         return [dict(r) for r in rows]

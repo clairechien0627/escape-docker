@@ -67,7 +67,7 @@
 
   <!-- Scoreboard -->
   <div class="section-title">📊 排行榜</div>
-  <div class="card mb-2"><table id="scoreboard-table"><thead><tr><th>名次</th><th>玩家</th><th>分數</th><th>FLAGS</th><th>最後提交</th></tr></thead><tbody></tbody></table></div>
+  <div class="card mb-2"><table id="scoreboard-table"><thead><tr><th>名次</th><th>學號</th><th>玩家</th><th>分數</th><th>FLAGS</th><th>最後提交</th></tr></thead><tbody></tbody></table></div>
 
   <!-- All Flags (答案) -->
   <div class="section-title">🚩 FLAG 答案清單</div>
@@ -100,7 +100,7 @@ async function loadDashboard() {
     // Scoreboard
     const sbTbody = document.querySelector('#scoreboard-table tbody');
     sbTbody.innerHTML = dash.scoreboard.slice(0,20).map((p,i) => `
-      <tr><td>${i+1}</td><td>${p.name}</td><td style="color:var(--yellow)">${p.total_score}</td><td>${p.flags_found}</td><td style="font-size:0.72rem;color:var(--text-dim)">${p.last_submit||'—'}</td></tr>
+      <tr><td>${i+1}</td><td>${p.student_id}</td><td>${p.name}</td><td style="color:var(--yellow)">${p.total_score}</td><td>${p.flags_found}</td><td style="font-size:0.72rem;color:var(--text-dim)">${p.last_submit||'—'}</td></tr>
     `).join('');
 
     // Flags

@@ -151,6 +151,14 @@ a:hover { text-decoration: underline; color: var(--cyan); }
   border-radius: 6px;
   padding: 0.3rem 0.75rem;
 }
+.navbar-player {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  white-space: nowrap;
+}
 
 /* ── Badge / Tag ── */
 .badge {
@@ -234,3 +242,149 @@ a:hover { text-decoration: underline; color: var(--cyan); }
 .rank-1 { color: var(--gold); }
 .rank-2 { color: var(--silver); }
 .rank-3 { color: var(--bronze); }
+
+/* ══════════════════════════════════════════
+   EdgeRange Hub — Homepage
+════════════════════════════════════════════ */
+
+.auth-card {
+  max-width: 400px;
+  margin: 4rem auto;
+  padding: 2rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.auth-card h1 {
+  font-size: 1.4rem;
+  letter-spacing: 2px;
+  margin-bottom: 0.25rem;
+}
+
+.auth-card .subtitle {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.auth-field {
+  margin-bottom: 1rem;
+}
+
+.auth-field label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-bottom: 0.3rem;
+}
+
+.auth-field input {
+  width: 100%;
+  background: var(--bg-dark);
+  border: 1px solid var(--green-dim);
+  color: var(--green);
+  font-family: var(--font-mono);
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+}
+
+.avatar-picker {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+
+.avatar-picker .avatar-option {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  font-size: 1.2rem;
+  background: var(--bg-dark);
+}
+
+.avatar-picker .avatar-option.selected {
+  border-color: var(--green);
+  box-shadow: 0 0 0 1px var(--green);
+}
+
+.auth-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 0.6rem;
+}
+
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  max-width: 960px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.module-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  text-decoration: none;
+  color: var(--text-main);
+  display: block;
+}
+
+.module-card .module-icon {
+  font-size: 1.8rem;
+}
+
+.module-card .module-name {
+  font-weight: bold;
+  margin: 0.4rem 0;
+}
+
+.module-card .module-desc {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.module-card.disabled {
+  border-style: dashed;
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.module-progress-bar {
+  margin-top: 0.6rem;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.module-progress-fill {
+  background: var(--green);
+  height: 100%;
+}
+
+.module-progress-label {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-top: 0.3rem;
+}
+
+.hub-welcome {
+  max-width: 960px;
+  margin: 2rem auto 0;
+  padding: 0 1rem;
+}
+
+.hub-welcome h1 {
+  font-size: 1.6rem;
+}
+
+.hub-welcome p {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}

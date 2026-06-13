@@ -52,14 +52,7 @@
 </head>
 <body>
 
-<nav class="navbar">
-  <a class="navbar-brand" href="index.html">🐳 Escape Docker</a>
-  <div class="navbar-links">
-    <a href="map.html">🗺️ Map</a>
-    <a href="scoreboard.html">📊 Score</a>
-    <a href="achievements.html" class="active">🏆 成就</a>
-  </div>
-</nav>
+<div id="global-nav"></div>
 
 <div class="page">
   <h1>🏆 成就牆</h1>
@@ -87,14 +80,16 @@
 
 <div id="toast-container"></div>
 <script src="js/api.js"></script>
+<script src="js/nav.js"></script>
 <script>
 async function loadAchievements() {
-  const player = await requirePlayer();
+  const profile = await requirePlayer();
+  if (!profile) return;
 
   try {
     const [allAchvs, progress] = await Promise.all([
       API.achievements(),
-      player ? API.player(player) : Promise.resolve({ achievements: [] }),
+      API.player(),
     ]);
 
     const earnedSet = new Set(progress.achievements);
@@ -111,7 +106,7 @@ async function loadAchievements() {
     document.getElementById('total-count').textContent = allAchvs.length;
     document.getElementById('achv-pts').textContent = totalBonus;
     document.getElementById('player-label').textContent =
-      player ? `${player} 的成就 — ${earnedSet.size} / ${allAchvs.length}` : '完成特定條件即可解鎖';
+      `${profile.name} 的成就 — ${earnedSet.size} / ${allAchvs.length}`;
 
     for (const a of allAchvs) {
       const earned = earnedSet.has(a.id);
