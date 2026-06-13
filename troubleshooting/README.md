@@ -26,3 +26,5 @@
 - [walkthrough-echo-missing-n-flag-mismatch.md](walkthrough-echo-missing-n-flag-mismatch.md) — walkthrough.md 用 `echo` 而非 `echo -n` 算 FLAG hash，多了換行字元導致 FLAG 不一致
 - [secret-b-image-flag-mismatch-and-walkthrough-confusion.md](secret-b-image-flag-mismatch-and-walkthrough-confusion.md) — Secret Room B 對玩家不可解（image 內建 FLAG 與 scoreboard 不一致 + walkthrough 沒說要在 Room 7 終端機執行）
 - [secret-b-oci-layer-format-mismatch.md](secret-b-oci-layer-format-mismatch.md) — Secret Room B walkthrough 的 `find -name "*.tar"` 對現代 Docker 的 OCI 匯出格式找不到任何 layer
+- [secret-a-entrypoint-echo-missing-n.md](secret-a-entrypoint-echo-missing-n.md) — Secret Room A entrypoint.sh 用 `echo` 算 `REAL_FLAG`，導致房間主要解法算出錯誤 FLAG
+- [room8-dind-stale-pid-restart-loop.md](room8-dind-stale-pid-restart-loop.md) — Room 8 DinD 被 OOM-kill 後以 `docker start` 重啟卡在 `/var/run/docker.pid` 重啟迴圈
