@@ -1,5 +1,7 @@
 # scoreboard-api 與前端 API 不一致（container 沒跟著切換 branch 重建）
 
+> **日期：** 2026-06-13
+
 ## 1. 緣由
 
 切換到目前這個 branch 後，開 `http://localhost/map.html` 進不去，瀏覽器

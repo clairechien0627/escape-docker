@@ -1,5 +1,7 @@
 # room5 riddle_server.py SyntaxError 排查報告
 
+> **日期：** 2026-06-13
+
 > 在撰寫 `lab/exploits/room5.sh` 時發現並修復——**這是會影響真實玩家的
 > bug，不只是 lab 自動化的問題**。
 

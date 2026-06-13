@@ -1,5 +1,7 @@
 # docker.sock gid 不匹配導致 room6/room7/room9/final 對 player 無法使用問題排查報告
 
+> **日期：** 2026-06-13
+
 > 在撰寫 `lab/exploits/{room6,room7,room9,final}.sh` 時發現並修復。
 
 ## 1. 緣由

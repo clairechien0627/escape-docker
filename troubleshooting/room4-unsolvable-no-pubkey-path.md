@@ -1,5 +1,7 @@
 # Room 4 在修復前對玩家不可解：沒有任何方式把公鑰植入 locked-server
 
+> **日期：** 2026-06-13
+
 ## 1. 緣由
 
 玩家照 `walkthrough.md` / `/etc/motd` 的步驟操作：

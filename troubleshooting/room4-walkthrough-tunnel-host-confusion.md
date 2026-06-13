@@ -1,5 +1,7 @@
 # Room 4 walkthrough.md 沒說明 SSH Tunnel 要在哪台機器執行
 
+> **日期：** 2026-06-13
+
 ## 1. 緣由
 
 修完 [[room4-unsolvable-no-pubkey-path]] 之後，玩家照

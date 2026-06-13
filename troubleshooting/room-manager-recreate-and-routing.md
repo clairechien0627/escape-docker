@@ -1,5 +1,7 @@
 # room-manager：recreate 卡住 / readiness 永遠 timeout / `/api/rooms/*` 路由錯誤
 
+> **日期：** 2026-06-11
+
 > 對應修復：`room-manager/lib/docker.js`、`nginx/nginx.conf`（commit `7f03847`）
 
 room-manager 上線（房間 on-demand 啟停／重置）後，測試「閒置自動 stop →

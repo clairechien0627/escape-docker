@@ -1,5 +1,7 @@
 # CRLF / LF 換行符問題（`.gitattributes`）
 
+> **日期：** 2026-06-11
+
 > 對應修復：[`.gitattributes`](../.gitattributes)（commit `f5ea19a`）
 
 ## 1. 問題現象

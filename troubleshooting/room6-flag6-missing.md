@@ -1,5 +1,7 @@
 # Room 6 沒有任何方式可以取得 FLAG6（progression-blocking）
 
+> **日期：** 2026-06-13
+
 ## 1. 緣由
 
 玩家照 `walkthrough.md` / `/etc/motd` 的步驟走完 ghost-alpha /

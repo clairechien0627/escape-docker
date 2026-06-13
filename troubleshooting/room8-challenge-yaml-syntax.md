@@ -1,5 +1,7 @@
 # room8 challenge docker-compose.yml 的 YAML 語法錯誤排查報告
 
+> **日期：** 2026-06-13
+
 > 在撰寫 `lab/exploits/room8.sh` 時發現並修復。
 
 ## 1. 緣由

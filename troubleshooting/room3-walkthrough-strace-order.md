@@ -1,5 +1,7 @@
 # Room 3 walkthrough.md 解題步驟誤導，導致玩家卡關
 
+> **日期：** 2026-06-13
+
 ## 1. 緣由
 
 玩家照 `walkthrough.md` 的 Room 3 步驟操作：

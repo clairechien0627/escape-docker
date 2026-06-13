@@ -1,5 +1,7 @@
 # FLAG 一致性問題排查報告
 
+> **日期：** 2026-06-11
+
 > 對應 `roadmap.md` 任務 2.2「FLAG 一致性檢查腳本」。
 > 工具：[`scripts/verify-flags.sh`](scripts/verify-flags.sh)
 
