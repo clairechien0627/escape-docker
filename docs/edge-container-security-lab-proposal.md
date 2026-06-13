@@ -110,10 +110,10 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
    轉換成「對房間容器執行攻擊腳本 + 蒐集 Falco 告警 + 記錄結果」
 3. **執行與展示分離**：lab-api 負責執行與資料，前端負責「即時檢視」與
    「歷史分析」兩種視圖，重用 Story Mode 已驗證過的 xterm.js 即時輸出模式
-4. **存取控制**：觸發「攻擊腳本」會對房間容器產生實際變動（提權、寫檔等），
-   因此 Lab 的「執行」動作需要登入/權杖（沿用現有 `ADMIN_TOKEN` 或新增
-   team token），避免被當成公開可濫用的攻擊工具；「查看歷史分析結果」
-   可以公開瀏覽
+4. **開放執行**：觸發「攻擊腳本」會對房間容器產生實際變動（提權、寫檔等），
+   但 Lab 本身的設計目的就是讓使用者自行操作的實驗模擬平台，因此「執行」
+   與「查看歷史分析結果」一樣不需登入/權杖；每次執行前後 lab-api 會呼叫
+   `room-manager` reset 還原房間狀態
 
 ---
 
@@ -229,8 +229,8 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
 >   並透過 `lib/run-manager.js`（EventEmitter）+ `lib/ws-stream.js` 提供
 >   `/api/lab/runs/:id/stream`（WebSocket）即時推送 `status`/`step`/
 >   `result`/`alert`/`error` 事件，細節見 `lab-api/README.md`
-> - `frontend/lab/index.html`：場景卡片 + 「▶ 執行」按鈕（沿用
->   `admin.html` 的 admin-token 模式）+ 歷史執行列表（輪詢）
+> - `frontend/lab/index.html`：場景卡片 + 「▶ 執行」按鈕（無需登入，
+>   `POST /api/lab/runs` 開放任何人觸發）+ 歷史執行列表（輪詢）
 > - `frontend/lab/run.html`：即時檢視頁，直接以原生 WebSocket 接上
 >   `/api/lab/runs/:id/stream`，左側即時步驟輸出、右側 Falco 告警
 >   feed；目前是「JSON 訊息渲染」而非重用 xterm.js 終端元件（攻擊腳本

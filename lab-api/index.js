@@ -31,7 +31,6 @@ const runManager = createRunManager({
 const app = createApp({
   scenarios,
   db,
-  adminToken: ADMIN_TOKEN,
   runManager,
 });
 

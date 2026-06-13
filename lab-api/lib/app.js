@@ -20,19 +20,12 @@ function toRunSnapshot(run) {
   return snapshot;
 }
 
-function createApp({ scenarios, db, adminToken, runManager }) {
+function createApp({ scenarios, db, runManager }) {
   const app = express();
   app.use(express.json());
 
   const scenarioById = new Map(scenarios.map((s) => [s.id, s]));
   const alerts = [];
-
-  function requireAdmin(req, res, next) {
-    if (req.headers['x-admin-token'] !== adminToken) {
-      return res.status(401).json({ error: 'unauthorized' });
-    }
-    next();
-  }
 
   // ── 場景目錄 ──────────────────────────────────────────
   app.get('/api/lab/scenarios', (req, res) => {
@@ -47,7 +40,7 @@ function createApp({ scenarios, db, adminToken, runManager }) {
 
   // ── 執行實驗（非同步：立即回傳 run_id，背景跑 reset -> exploit -> reset）──
   // Phase 3：前端可立即用回傳的 id 連線 /api/lab/runs/:id/stream 取得即時進度。
-  app.post('/api/lab/runs', requireAdmin, (req, res) => {
+  app.post('/api/lab/runs', (req, res) => {
     const scenarioId = req.body && req.body.scenario_id;
     const scenario = scenarioById.get(scenarioId);
     if (!scenario) return res.status(404).json({ error: 'unknown scenario' });

@@ -11,7 +11,7 @@ Edge Container Security Lab 的執行引擎（Phase 2 核心 + Phase 3 即時串
 |---|---|---|
 | `GET` | `/api/lab/scenarios` | 列出 15 個場景的中繼資料（精簡版） |
 | `GET` | `/api/lab/scenarios/:id` | 單一場景完整內容（含 `exploit_steps`、`falco_rule_refs` 等） |
-| `POST` | `/api/lab/runs` | **非同步**啟動一次實驗：body `{ "scenario_id": "room2" }`，需 `x-admin-token` header，立即回傳 `202` + run 物件（`status: "starting"`） |
+| `POST` | `/api/lab/runs` | **非同步**啟動一次實驗：body `{ "scenario_id": "room2" }`，無需登入，立即回傳 `202` + run 物件（`status: "starting"`） |
 | `GET` | `/api/lab/runs` | 歷史執行列表（可用 `?scenario_id=` 篩選），由新到舊 |
 | `GET` | `/api/lab/runs/:id` | 單次執行詳情（進行中回傳即時狀態，結束後回傳完整結果，含每個 step 的輸出） |
 | `GET` (WS) | `/api/lab/runs/:id/stream` | **Phase 3**：即時串流該次執行的 `status`/`step`/`result`/`alert`/`error` 事件（JSON，每則一行） |
@@ -21,7 +21,8 @@ Edge Container Security Lab 的執行引擎（Phase 2 核心 + Phase 3 即時串
 
 ## `POST /api/lab/runs` 流程（非同步，Phase 3）
 
-`POST /api/lab/runs` 立即回傳 `202` 與一筆 run 物件
+`POST /api/lab/runs` 不需任何驗證（Lab 設計為使用者可自行操作的
+實驗模擬平台），立即回傳 `202` 與一筆 run 物件
 （`{ id, scenario_id, status: "starting", started_at, steps: [], ... }`），
 實際執行在背景進行：
 
@@ -54,7 +55,7 @@ Edge Container Security Lab 的執行引擎（Phase 2 核心 + Phase 3 即時串
 | 變數 | 預設值 | 說明 |
 |---|---|---|
 | `PORT` | `4100` | 監聽埠 |
-| `ADMIN_TOKEN` | `admin_dev_token` | 呼叫 `POST /api/lab/runs` 與 room-manager reset 用的 token |
+| `ADMIN_TOKEN` | `admin_dev_token` | lab-api 呼叫 room-manager reset 用的內部 token（`POST /api/lab/runs` 本身不需要） |
 | `ROOM_MANAGER_URL` | `http://room-manager:4000` | room-manager 的 base URL |
 | `LAB_DIR` | `../lab`（本機）/ `/app/lab`（容器） | `lab/` 目錄路徑，需含 `scenarios/` 與 `exploits/` |
 | `RUN_TIMEOUT_MS` | `120000` | 單次 exploit 腳本的逾時時間（毫秒），超時會 `SIGKILL` |

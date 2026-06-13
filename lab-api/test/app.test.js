@@ -101,7 +101,6 @@ function buildApp(overrides = {}) {
   const app = createApp({
     scenarios: SCENARIOS,
     db,
-    adminToken: 'test-admin-token',
     runManager,
   });
 
@@ -136,22 +135,11 @@ test('GET /api/lab/scenarios/:id returns 404 for unknown scenario', async () => 
   assert.strictEqual(res.status, 404);
 });
 
-test('POST /api/lab/runs without admin token returns 401', async () => {
-  const { app, roomManagerClient, fakeExploit } = buildApp();
-
-  const res = await request(app).post('/api/lab/runs').send({ scenario_id: 'room2' });
-
-  assert.strictEqual(res.status, 401);
-  assert.deepStrictEqual(roomManagerClient.calls, []);
-  assert.deepStrictEqual(fakeExploit.calls, []);
-});
-
 test('POST /api/lab/runs with unknown scenario_id returns 404', async () => {
   const { app } = buildApp();
 
   const res = await request(app)
     .post('/api/lab/runs')
-    .set('x-admin-token', 'test-admin-token')
     .send({ scenario_id: 'does-not-exist' });
 
   assert.strictEqual(res.status, 404);
@@ -162,7 +150,6 @@ test('POST /api/lab/runs returns 202 immediately and the run finishes asynchrono
 
   const res = await request(app)
     .post('/api/lab/runs')
-    .set('x-admin-token', 'test-admin-token')
     .send({ scenario_id: 'room2' });
 
   assert.strictEqual(res.status, 202);
@@ -185,7 +172,6 @@ test('GET /api/lab/runs/:id reflects live progress while running, then the store
 
   const started = await request(app)
     .post('/api/lab/runs')
-    .set('x-admin-token', 'test-admin-token')
     .send({ scenario_id: 'room2' });
 
   const run = runManager.get(started.body.id);
@@ -300,7 +286,6 @@ test('Falco webhook forwards alerts to currently-running runs', async () => {
 
   const started = await request(app)
     .post('/api/lab/runs')
-    .set('x-admin-token', 'test-admin-token')
     .send({ scenario_id: 'room2' });
 
   const run = runManager.get(started.body.id);

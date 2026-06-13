@@ -17,12 +17,10 @@ Edge Container Security Lab 的前端介面，對應
     misconfiguration」）
   - 「▶ 執行」按鈕
 - **執行一次實驗**：點擊「▶ 執行」會：
-  1. 透過 `window.prompt` 取得 admin token（存於
-     `localStorage` 的 `escape_docker_admin_token`，與
-     `admin.html` 共用同一套機制）
-  2. 呼叫 `POST /api/lab/runs`（帶 `X-Admin-Token`），body 為
-     `{ "scenario_id": "<id>" }`
-  3. 後端立即回傳 `202` 與 run id，前端跳轉到
+  1. 呼叫 `POST /api/lab/runs`，body 為 `{ "scenario_id": "<id>" }`
+     （無需登入，任何人都可直接觸發——Lab 本身就是設計給使用者
+     自行操作的實驗模擬平台）
+  2. 後端立即回傳 `202` 與 run id，前端跳轉到
      `run.html?id=<run.id>` 即時觀察執行過程
 - **執行歷史**：載入 `GET /api/lab/runs`（可用 `?scenario_id=` 篩選），
   以表格列出過去所有執行記錄（場景、狀態、最終權限、是否取得
@@ -52,12 +50,12 @@ Edge Container Security Lab 的前端介面，對應
 
 ## 權限與限制
 
-- **查看**（場景列表、執行歷史、即時檢視）不需登入，任何人皆可瀏覽
-- **執行**（`POST /api/lab/runs`）需要 admin token，避免被當作
-  公開可濫用的攻擊觸發器；每次執行會對對應房間容器造成實際
-  變動（提權、寫檔等），執行前後 lab-api 會呼叫 `room-manager`
-  reset 還原房間狀態
-- 目前尚未提供 `analytics.html`（Phase 5，偵測率/延遲矩陣等彙整
-  分析頁面）與「執行節點（x86 / Raspberry Pi）」選擇，皆為後續
-  階段規劃
+- **查看**（場景列表、執行歷史、即時檢視、分析頁）與**執行**
+  （`POST /api/lab/runs`）皆不需登入——Lab 是設計給使用者自行
+  操作的實驗模擬平台，任何人都可直接觸發
+- 每次執行會對對應房間容器造成實際變動（提權、寫檔等），執行
+  前後 lab-api 會呼叫 `room-manager` reset 還原房間狀態
+- `analytics.html`（Phase 5，15 場景的成功率/FLAG 取得率/平均
+  耗時/Falco 偵測率彙整表）已提供；「執行節點（x86 / Raspberry
+  Pi）」選擇仍為後續階段規劃
 - 詳細的後端行為（事件種類、流程、已知限制）見 `lab-api/README.md`

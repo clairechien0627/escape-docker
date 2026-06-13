@@ -75,15 +75,6 @@
 <div id="toast-container"></div>
 <script src="../js/api.js"></script>
 <script>
-function getAdminToken() {
-  let token = localStorage.getItem('escape_docker_admin_token');
-  if (!token) {
-    token = window.prompt('執行實驗需要 Admin Token：');
-    if (token) localStorage.setItem('escape_docker_admin_token', token);
-  }
-  return token;
-}
-
 async function loadScenarios() {
   const grid = document.getElementById('scenario-grid');
   try {
@@ -111,15 +102,11 @@ async function loadScenarios() {
 }
 
 async function runScenario(scenarioId, btn) {
-  const token = getAdminToken();
-  if (!token) return;
-
   btn.disabled = true;
   btn.textContent = '啟動中…';
   try {
     const run = await apiFetch('/lab/runs', {
       method: 'POST',
-      headers: { 'X-Admin-Token': token },
       body: JSON.stringify({ scenario_id: scenarioId }),
     });
     window.location.href = `run.html?id=${encodeURIComponent(run.id)}`;

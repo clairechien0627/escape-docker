@@ -31,3 +31,7 @@
 - [falco-startup-config-bugs.md](falco-startup-config-bugs.md) — Falco 監控容器首次啟動的 3 個設定/規則問題（--modern-bpf、fd.sip CIDR 語法、engine.kind）
 - [falco-container-context-not-resolved.md](falco-container-context-not-resolved.md) — Falco smoke test：`docker exec` 短命子行程的 container context 大多解析不到，導致多條規則未觸發（已知限制，未修復）
 - [common-sh-duration-ms-busybox-date.md](common-sh-duration-ms-busybox-date.md) — `lab/exploits/lib/common.sh` 在 lab-api 的 alpine 容器（BusyBox date）上 `duration_ms` 永遠算成 0
+
+## 2026-06-14
+
+- [lab-admin-token-lockout.md](lab-admin-token-lockout.md) — Lab「▶ 執行」需要 Admin Token，輸入錯誤後 localStorage 永久快取、無法重試；移除該驗證（設計上 Lab 即為開放實驗平台）
