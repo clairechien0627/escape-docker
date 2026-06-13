@@ -27,6 +27,7 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
       started_at: new Date().toISOString(),
       finished_at: null,
       steps: [],
+      alerts: [],
       result: null,
       error: null,
       emitter,
@@ -65,6 +66,7 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
           flag_found: result ? result.flag_found : null,
           duration_ms: result ? result.duration_ms : null,
           steps: run.steps,
+          alerts: run.alerts,
           stderr: stderr || undefined,
         };
 
@@ -89,12 +91,14 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
     return runs.get(id);
   }
 
-  // 廣播 Falco 告警給目前仍在執行中的 run（starting/running）。
+  // 廣播 Falco 告警給目前仍在執行中的 run（starting/running），並記錄到
+  // run.alerts（隨最終結果一起寫入 db，供 /api/lab/analytics 使用）。
   // 同一時間通常只有一個實驗在跑，故不做更精細的時間窗關聯
   // （見 troubleshooting/falco-container-context-not-resolved.md 的限制）。
   function notifyAlert(alertRecord) {
     for (const run of runs.values()) {
       if (run.status === 'starting' || run.status === 'running') {
+        run.alerts.push(alertRecord);
         run.emitter.emit('alert', { type: 'alert', ...alertRecord });
       }
     }

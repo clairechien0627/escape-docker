@@ -17,6 +17,7 @@ Edge Container Security Lab 的執行引擎（Phase 2 核心 + Phase 3 即時串
 | `GET` (WS) | `/api/lab/runs/:id/stream` | **Phase 3**：即時串流該次執行的 `status`/`step`/`result`/`alert`/`error` 事件（JSON，每則一行） |
 | `POST` | `/api/lab/falco-webhook` | Falco `http_output` 的目標端點，記錄最近的告警並轉發給目前執行中的 run |
 | `GET` | `/api/lab/alerts` | 查看最近收到的 Falco 告警（除錯用，記憶體內，重啟即清空） |
+| `GET` | `/api/lab/analytics/detection-matrix` | **Phase 5**：依場景彙整歷史執行的成功率、FLAG 取得率、平均耗時、Falco 偵測率（RQ2） |
 
 ## `POST /api/lab/runs` 流程（非同步，Phase 3）
 
@@ -60,17 +61,18 @@ Edge Container Security Lab 的執行引擎（Phase 2 核心 + Phase 3 即時串
 
 ## 已知限制 / 未來工作
 
-- `POST /api/lab/runs` 是**同步**執行（HTTP 回應等到腳本跑完），room8
-  / secret-b 等較重的場景可能需要數十秒。即時串流（攻擊腳本 stdout +
-  Falco 告警）規劃在 Phase 3（`/api/lab/runs/:id/stream`，WebSocket）。
 - `falco_ruleset`（`off`/`basic`/`full`）參數尚未串接：目前 Falco 的
   ruleset 切換仍是手動修改 `falco/falco.yaml` 的 `rules_file` 或
   `-T tier_full_only` 旗標，未由 lab-api 動態控制。
-- Falco 告警與 exploit run 的時間關聯分析尚未實作：根據
+- 每次 run 在背景執行期間收到的 Falco 告警會記錄在
+  `run.alerts`（隨最終結果寫入 `data/runs.json`），
+  `/api/lab/analytics/detection-matrix` 即以
+  `alerts.length > 0` 作為該次 run 是否被「偵測到」。但根據
   `troubleshooting/falco-container-context-not-resolved.md` 的發現，
   `docker exec` 短命子行程的 `container.id` 在目前環境（Docker Desktop
   + WSL2 + modern eBPF）大多解析不到，多數規則不會對 exploit 腳本的
-  操作觸發，需先解決該限制（或改用 PID 關聯）才能讓這個分析有意義。
+  操作觸發，因此偵測率偏低/為 0 本身也是 RQ2 的觀察結果之一，並非
+  程式錯誤；需先解決該限制（或改用 PID 關聯）才能讓這個指標更精確。
 - `secret-b` 場景的 exploit 實際操作對象是 `room7`（在 room7 對
   `escape-docker-secret-b` image 做 OCI layer 考古，見
   `lab/exploits/README.md`）；目前 `/api/lab/runs` 只會重置

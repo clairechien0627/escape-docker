@@ -243,6 +243,47 @@ test('Falco webhook stores alerts, newest-first via GET /api/lab/alerts', async 
   assert.strictEqual(res.body[1].alert.rule, 'Terminal shell in container');
 });
 
+test('GET /api/lab/analytics/detection-matrix aggregates per-scenario stats, including scenarios with no runs', async () => {
+  const { app, db } = buildApp();
+
+  db.insert({ id: 'room2-1', scenario_id: 'room2', status: 'success', flag_found: 'EscapeDocker{a}', duration_ms: 1000, alerts: [{ alert: { rule: 'r1' } }], finished_at: '2026-06-13T16:20:27.063Z' });
+  db.insert({ id: 'room2-2', scenario_id: 'room2', status: 'failed', flag_found: null, duration_ms: 2000, alerts: [], finished_at: '2026-06-13T16:22:20.755Z' });
+
+  const res = await request(app).get('/api/lab/analytics/detection-matrix');
+
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.length, SCENARIOS.length);
+
+  const room2 = res.body.find((r) => r.scenario_id === 'room2');
+  assert.deepStrictEqual(room2.falco_rule_refs, SCENARIOS[0].falco_rule_refs);
+  assert.strictEqual(room2.runs, 2);
+  assert.strictEqual(room2.success_rate, 0.5);
+  assert.strictEqual(room2.flag_rate, 0.5);
+  assert.strictEqual(room2.avg_duration_ms, 1500);
+  assert.strictEqual(room2.detection_rate, 0.5);
+  assert.strictEqual(room2.last_run_at, '2026-06-13T16:22:20.755Z');
+
+  const room3 = res.body.find((r) => r.scenario_id === 'room3');
+  assert.strictEqual(room3.runs, 0);
+  assert.strictEqual(room3.success_rate, null);
+  assert.strictEqual(room3.flag_rate, null);
+  assert.strictEqual(room3.avg_duration_ms, null);
+  assert.strictEqual(room3.detection_rate, null);
+  assert.strictEqual(room3.last_run_at, null);
+});
+
+test('GET /api/lab/analytics/detection-matrix treats runs without an alerts field as not detected', async () => {
+  const { app, db } = buildApp();
+
+  db.insert({ id: 'room2-1', scenario_id: 'room2', status: 'success', flag_found: 'EscapeDocker{a}', duration_ms: 1000, finished_at: '2026-06-13T16:20:27.063Z' });
+
+  const res = await request(app).get('/api/lab/analytics/detection-matrix');
+
+  const room2 = res.body.find((r) => r.scenario_id === 'room2');
+  assert.strictEqual(room2.runs, 1);
+  assert.strictEqual(room2.detection_rate, 0);
+});
+
 test('Falco webhook forwards alerts to currently-running runs', async () => {
   // 讓 exploit 卡在 gate 上，確保 run 在我們送出 webhook 時仍是 running
   const gate = deferred();

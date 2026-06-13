@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>分析 — Edge Container Security Lab</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .page { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+    h1 { font-size: 1.4rem; color: var(--green); margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 1.5rem; }
+
+    .summary-row {
+      display: flex;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .summary-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.85rem 1.25rem;
+      text-align: center;
+      min-width: 110px;
+    }
+    .summary-num { font-size: 1.5rem; font-weight: 700; color: var(--blue); }
+    .summary-label { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+    .note-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--orange);
+      border-radius: 8px;
+      padding: 0.85rem 1.1rem;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+    }
+    .note-box strong { color: var(--orange); }
+    .note-box a { color: var(--blue); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th { text-align: left; padding: 0.45rem 0.6rem; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+    td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--bg-hover); vertical-align: middle; }
+    tr:hover td { background: var(--bg-hover); }
+    .scenario-title { font-weight: 600; color: var(--text-main); }
+    .scenario-id { font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono); }
+    .num-cell { font-variant-numeric: tabular-nums; }
+    .dim-cell { color: var(--text-muted); }
+
+    .rate-cell { display: flex; align-items: center; gap: 0.5rem; min-width: 110px; }
+    .rate-bar { flex: 1; height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
+    .rate-fill { height: 100%; border-radius: 3px; }
+    .rate-fill.good { background: var(--green); }
+    .rate-fill.mid  { background: var(--yellow); }
+    .rate-fill.bad  { background: var(--red); }
+    .rate-text { font-size: 0.74rem; color: var(--text-dim); width: 38px; text-align: right; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="../index.html">🐳 Escape Docker</a>
+  <div class="navbar-links">
+    <a href="../map.html">🗺️ Map</a>
+    <a href="index.html">🧪 Lab</a>
+    <a href="analytics.html" class="active">📈 分析</a>
+  </div>
+</nav>
+
+<div class="page">
+  <h1>📈 偵測率 / 誤報率分析</h1>
+  <p class="subtitle">彙整 15 個場景的歷史執行結果：成功率、FLAG 取得率、平均耗時，以及 Falco 偵測率（RQ2）。</p>
+
+  <div class="summary-row" id="summary-row" style="display:none">
+    <div class="summary-card">
+      <div class="summary-num" id="sum-total-runs">0</div>
+      <div class="summary-label">總執行次數</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-num" id="sum-scenarios-run">0 / 15</div>
+      <div class="summary-label">已執行場景數</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-num" id="sum-success-rate">—</div>
+      <div class="summary-label">平均成功率</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-num" id="sum-detection-rate">—</div>
+      <div class="summary-label">平均 Falco 偵測率</div>
+    </div>
+  </div>
+
+  <div class="note-box">
+    <strong>關於「Falco 偵測率」的解讀：</strong>
+    偵測率代表「該次執行期間，lab-api 是否收到至少一筆來自 Falco 的告警」
+    （透過 <code>/api/lab/falco-webhook</code> 即時轉發）。在目前的開發環境
+    （Docker Desktop + WSL2 + modern eBPF）下，<code>docker exec</code>
+    產生的短命子行程多數無法被 Falco 正確解析出
+    <code>container.id</code>，導致依賴
+    <code>container.id != host</code> 的規則大多不會觸發——因此偵測率
+    偏低或為 0 本身也是 RQ2 的一項觀察結果，不代表平台故障。詳見
+    <code>troubleshooting/falco-container-context-not-resolved.md</code>。
+  </div>
+
+  <div class="card">
+    <table id="matrix-table">
+      <thead>
+        <tr>
+          <th>場景</th>
+          <th>類型</th>
+          <th>執行次數</th>
+          <th>成功率</th>
+          <th>FLAG 取得率</th>
+          <th>平均耗時</th>
+          <th>Falco 偵測率</th>
+          <th>最後執行</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="8" class="text-dim">載入中…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/api.js"></script>
+<script>
+function rateCell(rate) {
+  if (rate == null) return '<span class="dim-cell">—</span>';
+  const pct = Math.round(rate * 100);
+  const cls = pct >= 70 ? 'good' : pct >= 30 ? 'mid' : 'bad';
+  return `
+    <div class="rate-cell">
+      <div class="rate-bar"><div class="rate-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="rate-text">${pct}%</div>
+    </div>
+  `;
+}
+
+function formatTime(iso) {
+  if (!iso) return '<span class="dim-cell">—</span>';
+  return new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+async function loadAnalytics() {
+  const tbody = document.querySelector('#matrix-table tbody');
+  try {
+    const matrix = await apiFetch('/lab/analytics/detection-matrix');
+
+    const totalRuns = matrix.reduce((sum, m) => sum + m.runs, 0);
+    const ranScenarios = matrix.filter((m) => m.runs > 0);
+    const avgSuccess = ranScenarios.length
+      ? ranScenarios.reduce((sum, m) => sum + m.success_rate, 0) / ranScenarios.length
+      : null;
+    const avgDetection = ranScenarios.length
+      ? ranScenarios.reduce((sum, m) => sum + m.detection_rate, 0) / ranScenarios.length
+      : null;
+
+    document.getElementById('summary-row').style.display = 'flex';
+    document.getElementById('sum-total-runs').textContent = totalRuns;
+    document.getElementById('sum-scenarios-run').textContent = `${ranScenarios.length} / ${matrix.length}`;
+    document.getElementById('sum-success-rate').textContent = avgSuccess != null ? `${Math.round(avgSuccess * 100)}%` : '—';
+    document.getElementById('sum-detection-rate').textContent = avgDetection != null ? `${Math.round(avgDetection * 100)}%` : '—';
+
+    tbody.innerHTML = matrix.map((m) => `
+      <tr>
+        <td>
+          <div class="scenario-title">${m.title}</div>
+          <div class="scenario-id">${m.scenario_id}</div>
+        </td>
+        <td><span class="badge badge-blue">${m.vuln_type}</span></td>
+        <td class="num-cell">${m.runs}</td>
+        <td>${rateCell(m.success_rate)}</td>
+        <td>${rateCell(m.flag_rate)}</td>
+        <td class="num-cell ${m.avg_duration_ms == null ? 'dim-cell' : ''}">${m.avg_duration_ms != null ? m.avg_duration_ms + ' ms' : '—'}</td>
+        <td>${rateCell(m.detection_rate)}</td>
+        <td style="font-size:0.74rem">${formatTime(m.last_run_at)}</td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-red">載入失敗：${e.message}</td></tr>`;
+  }
+}
+
+loadAnalytics();
+</script>
+</body>
+</html>

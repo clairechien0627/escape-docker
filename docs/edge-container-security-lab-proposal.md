@@ -220,9 +220,9 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
 | Phase 2 | lab-api 核心：執行引擎（ensure→reset→套用規則→執行腳本→蒐集告警→寫入結果→reset） | 平台核心 | ✅ 已完成 |
 | Phase 3 | 即時串流（WebSocket：攻擊輸出 + Falco 告警），`lab/run.html` 即時檢視 | 平台核心 | ✅ 已完成 |
 | Phase 4 | `lab/index.html` 控制台（場景選擇、執行設定、歷史列表） | 平台核心 | ✅ 已完成（基本版） |
-| Phase 5 | 對照實驗執行 + `lab/analytics.html`（偵測率/延遲矩陣、誤報率） | RQ2 | 未開始 |
+| Phase 5 | 對照實驗執行 + `lab/analytics.html`（偵測率/延遲矩陣、誤報率） | RQ2 | ✅ 已完成（基本版） |
 | Phase 6 | Raspberry Pi 節點部署 + 資源開銷實驗 + x86/Pi 對照圖表 | RQ3 | 未開始（委派給 Pi 負責的隊員） |
-| Phase 7 | Hub 整合（Lab 為主模組、Story Mode 為附屬模組）+ 整合測試 + 報告 | 整合 | 未開始 |
+| Phase 7 | Hub 整合（Lab 為主模組、Story Mode 為附屬模組）+ 整合測試 + 報告 | 整合 | 部分完成 |
 
 > Phase 3/4 實作細節：
 > - `lab-api` 改為非同步執行模型（`POST /api/lab/runs` 立即回傳 `202`），
@@ -237,7 +237,22 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
 >   輸出本身是結構化 JSON Lines，不是互動式 shell session，渲染為
 >   結構化步驟卡片更適合）
 > - 已加入 Hub 各頁（`map.html`/`scoreboard.html`/`achievements.html`）
->   的導覽列連結；`lab/analytics.html`（Phase 5）尚未建立
+>   的導覽列連結
+>
+> Phase 5/7 實作細節：
+> - 後端新增 `GET /api/lab/analytics/detection-matrix`：依場景彙整
+>   `data/runs.json` 的歷史執行記錄（執行次數、成功率、FLAG 取得率、
+>   平均耗時、Falco 偵測率），即使尚無任何 run 的場景也會列出
+>   （供前端呈現完整 15 列）。`run-manager.js` 同步新增
+>   `run.alerts`：每次 run 在背景執行期間收到的 Falco 告警會記錄下來
+>   並隨最終結果寫入 db，作為「偵測率」的資料來源
+> - `frontend/lab/analytics.html`：15 場景的彙整表格（含成功率/FLAG
+>   取得率/平均耗時/Falco 偵測率的長條視覺化），並說明目前偵測率偏低
+>   是 `falco-container-context-not-resolved` 限制下的預期結果，而非
+>   平台錯誤——此觀察本身即為 RQ2 的一項結論
+> - Phase 7（部分）：`frontend/index.html` 首頁新增「🧪 Security Lab」
+>   CTA 按鈕與簡短的 Lab 模組介紹區塊，作為 Story Mode 之外的第二入口；
+>   尚未進行「Lab 為主模組」的完整版面重排與整合測試/報告
 
 ---
 

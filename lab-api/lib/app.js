@@ -88,6 +88,57 @@ function createApp({ scenarios, db, adminToken, runManager }) {
     res.json(alerts.slice().reverse());
   });
 
+  // ── 分析（RQ2：15 場景的偵測率/誤報率彙整，Phase 5）──────────
+  // 以歷史 runs（db）為基礎，依 scenario 彙整：成功率、flag 取得率、
+  // 平均耗時，以及「偵測率」（該次 run 期間是否收到任一 Falco 告警，
+  // run.alerts.length > 0）。即使某場景尚無任何 run 也會列出（全為 null/0），
+  // 讓前端可以呈現完整的 15 列表格。
+  app.get('/api/lab/analytics/detection-matrix', (req, res) => {
+    const stats = new Map(scenarios.map((s) => [s.id, {
+      scenario_id: s.id,
+      title: s.title,
+      vuln_type: s.vuln_type,
+      falco_rule_refs: s.falco_rule_refs || [],
+      runs: 0,
+      successCount: 0,
+      flagCount: 0,
+      durationSum: 0,
+      durationCount: 0,
+      detectedCount: 0,
+      last_run_at: null,
+    }]));
+
+    for (const run of db.list()) {
+      const entry = stats.get(run.scenario_id);
+      if (!entry) continue;
+
+      entry.runs += 1;
+      if (run.status === 'success') entry.successCount += 1;
+      if (run.flag_found) entry.flagCount += 1;
+      if (typeof run.duration_ms === 'number') {
+        entry.durationSum += run.duration_ms;
+        entry.durationCount += 1;
+      }
+      if (Array.isArray(run.alerts) && run.alerts.length > 0) entry.detectedCount += 1;
+      if (!entry.last_run_at || run.finished_at > entry.last_run_at) entry.last_run_at = run.finished_at;
+    }
+
+    const matrix = [...stats.values()].map((e) => ({
+      scenario_id: e.scenario_id,
+      title: e.title,
+      vuln_type: e.vuln_type,
+      falco_rule_refs: e.falco_rule_refs,
+      runs: e.runs,
+      success_rate: e.runs ? e.successCount / e.runs : null,
+      flag_rate: e.runs ? e.flagCount / e.runs : null,
+      avg_duration_ms: e.durationCount ? Math.round(e.durationSum / e.durationCount) : null,
+      detection_rate: e.runs ? e.detectedCount / e.runs : null,
+      last_run_at: e.last_run_at,
+    }));
+
+    res.json(matrix);
+  });
+
   return app;
 }
 

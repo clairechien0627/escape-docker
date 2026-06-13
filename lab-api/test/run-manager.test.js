@@ -135,6 +135,18 @@ test('notifyAlert broadcasts "alert" only to runs that are still starting/runnin
   assert.strictEqual(alerts[0].alert.rule, 'during-run');
 });
 
+test('notifyAlert records alerts on the run and includes them in the finished result', async () => {
+  const { runManager, db } = build();
+
+  const run = runManager.startRun('room2');
+  runManager.notifyAlert({ received_at: 'now', alert: { rule: 'during-run' } });
+
+  await new Promise((resolve) => run.emitter.once('result', resolve));
+
+  assert.deepStrictEqual(run.alerts, [{ received_at: 'now', alert: { rule: 'during-run' } }]);
+  assert.deepStrictEqual(db.runs[0].alerts, run.alerts);
+});
+
 test('get returns the run object and undefined for unknown ids', () => {
   const { runManager } = build();
   const run = runManager.startRun('room2');

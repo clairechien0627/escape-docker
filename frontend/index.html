@@ -56,6 +56,22 @@
     .hero-story strong { color: var(--green); }
     .hero-story em { color: var(--yellow); font-style: normal; }
 
+    .lab-promo {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--cyan);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      max-width: 600px;
+      text-align: left;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      color: var(--text-dim);
+      margin-top: 2.5rem;
+    }
+    .lab-promo .lab-promo-title { color: var(--cyan); font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; }
+    .lab-promo a { color: var(--cyan); }
+
     .hero-cta {
       display: flex;
       gap: 1rem;
@@ -156,6 +172,7 @@
   <div class="hero-cta">
     <a class="btn-cta" href="map.html">🗺️ 進入地圖</a>
     <a class="btn-cta btn-cta-secondary" href="scoreboard.html">📊 排行榜</a>
+    <a class="btn-cta btn-cta-secondary" href="lab/index.html">🧪 Security Lab</a>
   </div>
 
   <div class="chapters-row">
@@ -208,6 +225,14 @@
       <div class="stat-num">~2hr</div>
       <div class="stat-label">預估時間</div>
     </div>
+  </div>
+
+  <div class="lab-promo">
+    <div class="lab-promo-title">🧪 Edge Container Security Lab</div>
+    <p>同一套 15 個容器環境，也是一個<strong style="color:var(--cyan)">可重複執行的攻擊鏈實驗平台</strong>：
+    選擇場景、按下執行，即時觀看攻擊腳本逐步取得權限，並對照
+    Falco 的偵測告警與彙整後的偵測率分析——適合用來研究「規則式偵測在邊緣容器環境下的有效性」。</p>
+    <p style="margin-top:0.5rem"><a href="lab/index.html">進入 Lab →</a></p>
   </div>
 
   <div class="typing-line" id="typing-line">$ <span id="typing-text"></span><span class="cursor"></span></div>
