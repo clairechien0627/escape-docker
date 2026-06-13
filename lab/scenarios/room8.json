@@ -1,0 +1,28 @@
+{
+  "id": "room8",
+  "container": "room8",
+  "title": "docker-compose 設定缺陷修復",
+  "vuln_type": "misconfiguration-debugging",
+  "exploit_script": "exploits/room8.sh",
+  "exploit_steps": [
+    "cd /home/player/challenge && cat docker-compose.yml 閱讀設定與內嵌的 Python app 程式碼",
+    "docker compose up 觀察 app 因缺少 DB_HOST 而 exit(1)",
+    "docker compose logs app 確認錯誤訊息 ERROR: DB_HOST not set!",
+    "編輯 docker-compose.yml，為 app service 加入 environment: DB_HOST=database 與 depends_on: [database]",
+    "docker compose up -d 重新啟動",
+    "curl localhost:8080 取得 HTTP 回應中的 FLAG"
+  ],
+  "expected_outcome": "修正 docker-compose 設定後，app 容器正常啟動並透過 HTTP（port 8080）回傳 FLAG",
+  "falco_rule_refs": [
+    "docker_compose_exec",
+    "new_container_created",
+    "local_http_request_nonstandard_port"
+  ],
+  "falco_relevant_behaviors": [
+    "docker compose / docker-compose-v2 指令執行",
+    "新容器建立（app, database services）",
+    "對 port 8080 的本機 HTTP 連線（curl）",
+    "player 容器內透過 docker group 建立新容器並對外暴露 port"
+  ],
+  "notes": "需先確認 room8 容器內是否有可連線的 Docker daemon（docker.sock 未在 compose 中掛載，可能依賴內部 dockerd），實作前要驗證 docker compose up 是否真的可執行。"
+}

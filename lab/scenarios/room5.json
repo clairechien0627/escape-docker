@@ -1,0 +1,23 @@
+{
+  "id": "room5",
+  "container": "room5",
+  "title": "未認證內部服務（謎語問答）",
+  "vuln_type": "unauthenticated-network-service",
+  "exploit_script": "exploits/room5.sh",
+  "exploit_steps": [
+    "ss -tlnp 或 netstat -tlnp 列出本機監聽中的 TCP port，找到 0.0.0.0:7777",
+    "（可選）cat /etc/hosts 發現額外注入的 mystery.internal host 記錄",
+    "nc localhost 7777 或 curl localhost:7777 接收謎語文字",
+    "輸入答案 hostname（謎語答案）",
+    "服務回傳 FLAG"
+  ],
+  "expected_outcome": "透過簡單的網路服務互動（無認證機制）取得 FLAG",
+  "falco_rule_refs": [
+    "local_service_port_scan",
+    "loopback_connect_nonstandard_port"
+  ],
+  "falco_relevant_behaviors": [
+    "對本機非標準 port（7777）的本地 socket 連線（loopback connect）",
+    "執行 ss/netstat/nc 等網路偵察工具"
+  ]
+}

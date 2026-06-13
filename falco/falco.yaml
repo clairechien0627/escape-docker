@@ -1,0 +1,30 @@
+# falco/falco.yaml
+#
+# Edge Container Security Lab 用的 Falco 設定（覆蓋 Falco 預設安裝的 falco.yaml）。
+# 與內建 falco_rules.yaml 一起載入，額外載入 lab_rules.yaml。
+
+rules_file:
+  - /etc/falco/falco_rules.yaml
+  - /etc/falco/rules.d
+  - /etc/falco/lab_rules.yaml
+
+# 以 JSON 輸出，方便 lab-api 解析
+json_output: true
+json_include_output_property: true
+json_include_tags_property: true
+
+# 告警輸出：透過 HTTP webhook 推送給 lab-api（對應 Phase 2/3 的告警轉發）
+http_output:
+  enabled: true
+  url: "http://lab-api:4100/api/lab/falco-webhook"
+
+# 同時保留標準輸出，方便部署初期直接看 Falco container 的 log 除錯
+stdout_output:
+  enabled: true
+
+priority: debug
+
+# ruleset 切換（off/basic/full）由 lab-api 透過下方任一方式控制，
+# 詳見 falco/README.md：
+#   1. 啟動 Falco 時加上 -T tier_full_only（basic 模式）
+#   2. 或在 rules_file 清單中移除/加入 lab_rules.yaml（off 模式）

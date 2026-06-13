@@ -1,0 +1,22 @@
+{
+  "id": "room0",
+  "container": "room0",
+  "title": "MOTD 明文洩漏 FLAG",
+  "vuln_type": "information-disclosure",
+  "exploit_script": "exploits/room0.sh",
+  "exploit_steps": [
+    "讀取登入時顯示的 /etc/motd",
+    "在 motd 末尾找到以明文寫出的 FLAG: EscapeDocker{...} 一行",
+    "（可選）讀取 /etc/escape-docker/hint.txt 取得進階提示",
+    "擷取 FLAG 字串"
+  ],
+  "expected_outcome": "取得明文 FLAG（純資訊洩漏，無需提權）",
+  "falco_rule_refs": [
+    "read_etc_motd",
+    "read_hint_file"
+  ],
+  "falco_relevant_behaviors": [
+    "讀取 /etc/motd",
+    "讀取 /etc/escape-docker/hint.txt"
+  ]
+}

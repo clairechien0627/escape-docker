@@ -1,0 +1,26 @@
+{
+  "id": "room10",
+  "container": "room10",
+  "title": "跨日誌關聯分析找出洩漏的 Session Token",
+  "vuln_type": "exposed-secret-in-logs",
+  "exploit_script": "exploits/room10.sh",
+  "exploit_steps": [
+    "分析 /var/log/auth.log：grep 'Failed' | awk '{print $11}' | sort | uniq -c | sort -rn 找出暴力破解次數最多的來源 IP（192.168.1.100）",
+    "確認該 IP 之後有 Accepted password 成功登入記錄",
+    "在 /var/log/nginx.log 中 grep 該 IP，鎖定其存取的敏感路徑 /api/v1/users/export（200 回應且回應體積異常大）",
+    "在 /var/log/app.log 中以該敏感路徑/事件為線索 grep，找到 'Session token: EscapeDocker{...}' 這一行",
+    "該 session token 即為 FLAG"
+  ],
+  "expected_outcome": "透過跨三份日誌的關聯分析（攻擊者 IP → 存取路徑 → session token），在 app.log 中找到以明文記錄的 FLAG/session token",
+  "falco_rule_refs": [
+    "ssh_bruteforce_pattern",
+    "sensitive_endpoint_access",
+    "sensitive_token_in_log"
+  ],
+  "falco_relevant_behaviors": [
+    "對 SSH 服務的高頻 Failed password 嘗試（brute force 偵測）",
+    "成功登入後存取 /api/v1/users/export 等敏感端點",
+    "應用程式將 session token 寫入日誌檔案（敏感資訊洩漏到日誌）"
+  ],
+  "notes": "房間本身的解題行為（grep/awk 讀取 /var/log/*）是合法 forensic 行為，可作為基準對照；Falco 規則應針對『產生這些日誌的原始攻擊行為』設計，而非玩家的分析動作本身。"
+}

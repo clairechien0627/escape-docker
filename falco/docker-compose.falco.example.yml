@@ -1,0 +1,70 @@
+# falco/docker-compose.falco.example.yml
+#
+# 範例：在現有專案中加入 Falco 監控服務。
+#
+# 這是「範例/參考設定」，刻意不直接合併進主要的 docker-compose.yml，
+# 因為是否要在開發機與 Raspberry Pi 上都跑特權容器、要用哪種驅動
+# （kernel module / eBPF / modern eBPF），是團隊需要先確認的事項
+# （見 docs/edge-container-security-lab-proposal.md 第 9 節）。
+#
+# 使用方式（確認驅動可行後）：
+#   1. 將下方 `falco` service 區塊貼到主 docker-compose.yml 的 services 下
+#   2. 將下方 `networks` 中新增的部分合併進主 docker-compose.yml 既有的 networks
+#   3. docker compose up -d falco
+#
+# 驗證 Falco 是否正常啟動：
+#   docker compose logs -f falco
+#   應看到 "Loaded event sources" 及 lab_rules.yaml 規則被載入的訊息，
+#   沒有 "rule_loader.cpp" 相關的 condition/macro 錯誤。
+
+services:
+  falco:
+    image: falcosecurity/falco-no-driver:latest
+    container_name: escape-falco
+    privileged: true
+    pid: host
+    restart: unless-stopped
+
+    # ── 驅動選擇（三者選一，依硬體/環境調整）──────────────────
+    # 開發機（有 kernel headers）：建議用 kernel module 驅動
+    #   - image 改用 falcosecurity/falco:latest
+    #   - 額外掛載 /usr/src 與 /lib/modules（如下already掛載）
+    # Raspberry Pi / 無 kernel headers 環境：建議用 modern eBPF 驅動
+    #   - image 維持 falcosecurity/falco-no-driver:latest
+    #   - 設定環境變數 FALCO_BPF_PROBE="" 並加上 --modern-bpf 參數（見下方 command）
+    #   - 需要 Linux kernel >= 5.8 並啟用 BTF（CONFIG_DEBUG_INFO_BTF=y）
+    command:
+      - /usr/bin/falco
+      - --modern-bpf
+      - -c
+      - /etc/falco/falco.yaml
+      # 預設載入 full ruleset；basic 模式請改成：
+      # - -T
+      # - tier_full_only
+
+    volumes:
+      # Falco 設定與自訂規則
+      - ./falco/falco.yaml:/etc/falco/falco.yaml:ro
+      - ./falco/rules/lab_rules.yaml:/etc/falco/lab_rules.yaml:ro
+
+      # 觀測其他 container 的系統呼叫所需
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /etc:/host/etc:ro
+      - /dev:/host/dev:ro
+      - /sys:/host/sys:ro
+
+      # 僅使用 kernel module 驅動時才需要（modern eBPF 可省略）
+      - /usr/src:/usr/src:ro
+      - /lib/modules:/lib/modules:ro
+
+    environment:
+      - HOST_ROOT=/host
+
+    networks:
+      # 讓 Falco 能透過 http_output 把告警送到 lab-api
+      - game_net
+
+# ── networks 合併備註 ─────────────────────────────────────────
+# 主 docker-compose.yml 已定義 game_net（172.20.0.0/24），
+# Falco 加入該網路即可連到 lab-api，不需新增網段。

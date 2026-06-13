@@ -1,0 +1,376 @@
+# falco/rules/lab_rules.yaml
+#
+# Edge Container Security Lab 自訂 Falco 規則。
+#
+# 載入方式：此檔案需與 Falco 內建的 falco_rules.yaml 一起載入
+# （作為額外的 rules_file），因為以下規則使用了內建巨集：
+# `container`、`spawned_process`、`open_read`、`open_write`。
+#
+# tags 慣例：
+#   - tier_basic    ：核心高信度規則，falco_ruleset=basic/full 都會載入
+#   - tier_full_only：僅 falco_ruleset=full 才載入的進階/輔助規則
+#   - 房間 id（room0 ... room11, final, secret-a, secret-b）：標示此規則對應
+#     lab/scenarios/<id>.json 的 falco_rule_refs
+#
+# ruleset 切換機制（見 falco/README.md）：
+#   - off  ：不載入本檔案
+#   - basic：載入本檔案，並以 `-T tier_full_only` 停用所有 tier_full_only 規則
+#   - full ：載入本檔案，不額外停用任何 tag（enabled: false 的規則仍維持停用）
+#
+# 部分規則為「概念性/best-effort」設計（純 syscall 層級難以精確區分
+# Docker API 的語意，例如 list/inspect/start/exec 都會經過同一個
+# docker.sock fd），這類規則在 desc 中會註明，建議在實際部署/測試
+# 階段依 Falco 版本與輸出再行調校。
+
+# ══════════════ room0：基準行為（誤報率對照組） ══════════════
+
+- rule: Baseline Read Of Motd Or Hint File
+  desc: 讀取 /etc/motd 或 hint 檔案，屬正常教學情境下的基準行為，用於誤報率對照
+  condition: >
+    open_read and container and
+    (fd.name = /etc/motd or fd.name = /etc/escape-docker/hint.txt)
+  output: >
+    讀取 motd/hint 檔案 (file=%fd.name proc=%proc.name container=%container.name)
+  priority: INFO
+  tags: [tier_full_only, room0, baseline]
+
+# ══════════════ room1：archive 遍歷 + base64 解碼 ══════════════
+
+- rule: Recursive Find Under Archive Directory
+  desc: 對 /home/player/archive 進行大量遞迴搜尋，可能是資料外洩前的偵察
+  condition: >
+    spawned_process and container and
+    proc.name = find and proc.cmdline contains "/home/player/archive"
+  output: >
+    遞迴搜尋 archive 目錄 (command=%proc.cmdline container=%container.name)
+  priority: INFO
+  tags: [tier_full_only, room1]
+
+- rule: Base64 Decode Executed
+  desc: 容器內執行 base64 解碼，可能用於還原被弱混淆的機密資料
+  condition: >
+    spawned_process and container and
+    proc.name = base64 and proc.cmdline contains "-d"
+  output: >
+    執行 base64 -d (command=%proc.cmdline container=%container.name)
+  priority: INFO
+  tags: [tier_full_only, room1]
+
+# ══════════════ room2：sudo 引數注入提權 ══════════════
+
+- rule: Sudo Exec Of Backup Script
+  desc: player 透過 sudo 執行 backup.sh，可能用於繞過檔案權限讀取 /secret
+  condition: >
+    spawned_process and container and
+    proc.name = sudo and proc.cmdline contains "backup.sh"
+  output: >
+    sudo 執行 backup.sh (user=%user.name command=%proc.cmdline container=%container.name)
+  priority: WARNING
+  tags: [tier_basic, room2]
+
+- rule: Root Read Of Secret File Via Spawned Process
+  desc: 以 root 身份的程序讀取 /secret 下的檔案，可能透過 sudo/cron 等代理達成（room2/room11 共用）
+  condition: >
+    open_read and container and
+    fd.name startswith /secret and user.uid = 0
+  output: >
+    root 程序讀取 /secret 下檔案 (file=%fd.name proc=%proc.name pname=%proc.pname container=%container.name)
+  priority: WARNING
+  tags: [tier_basic, room2, room11]
+
+- rule: DAC Read Search Capability Used
+  desc: >
+    程序使用 CAP_DAC_READ_SEARCH capability 繞過檔案讀取權限檢查
+    （room2 在 docker-compose 中刻意開放此 capability 作為最小權限集合之一）
+  condition: >
+    container and spawned_process and
+    thread.cap_effective contains CAP_DAC_READ_SEARCH
+  output: >
+    程序帶有 CAP_DAC_READ_SEARCH (proc=%proc.name container=%container.name)
+  priority: NOTICE
+  tags: [tier_full_only, room2]
+
+# ══════════════ room3：訊號 / ptrace 濫用 ══════════════
+
+- rule: Signal Sent To Other Process
+  desc: 程序對其他程序送出 SIGUSR1/SIGUSR2，可能觸發隱藏的除錯/洩漏行為
+  condition: >
+    evt.type in (kill, tgkill) and container and
+    evt.arg.sig in (SIGUSR1, SIGUSR2)
+  output: >
+    送出訊號給其他程序 (signal=%evt.arg.sig proc=%proc.name container=%container.name)
+  priority: WARNING
+  tags: [tier_full_only, room3]
+
+- rule: Ptrace Attach To Other Process
+  desc: 程序使用 ptrace（例如 strace -p）附加到其他程序，可能用於窺探其輸出
+  condition: >
+    evt.type = ptrace and container
+  output: >
+    ptrace 附加到其他程序 (proc=%proc.name container=%container.name)
+  priority: WARNING
+  tags: [tier_full_only, room3]
+
+- rule: Read Proc Cmdline Or Environ Of Other Process
+  desc: >
+    讀取 /proc/<pid>/cmdline 或 /proc/<pid>/environ，常見於偵察其他程序的
+    指令列或環境變數（room3 偵察 flag_daemon；secret-a 讀取環境變數洩漏）。
+    此規則未排除讀取自身 /proc 項目，建議部署時依基準流量調校。
+  condition: >
+    open_read and container and
+    (fd.name glob "/proc/*/cmdline" or fd.name glob "/proc/*/environ")
+  output: >
+    讀取其他程序的 /proc 資訊 (file=%fd.name proc=%proc.name container=%container.name)
+  priority: NOTICE
+  tags: [tier_full_only, room3, secret-a]
+
+# ══════════════ room4：SSH 跳板 + port forwarding ══════════════
+
+- rule: SSH Keygen Executed In Container
+  desc: 容器內執行 ssh-keygen，可能為橫向移動準備金鑰
+  condition: >
+    spawned_process and container and
+    proc.name = ssh-keygen
+  output: >
+    執行 ssh-keygen (container=%container.name command=%proc.cmdline)
+  priority: NOTICE
+  tags: [tier_full_only, room4]
+
+- rule: Authorized Keys Modified
+  desc: ~/.ssh/authorized_keys 被寫入/修改，可能是橫向移動的後門植入
+  condition: >
+    open_write and container and
+    fd.name endswith ".ssh/authorized_keys"
+  output: >
+    authorized_keys 被修改 (file=%fd.name container=%container.name proc=%proc.name)
+  priority: WARNING
+  tags: [tier_basic, room4]
+
+- rule: SSH Local Port Forward Established
+  desc: 偵測 ssh -L port forwarding 行為，可能用於存取僅限 localhost 的內部服務
+  condition: >
+    spawned_process and container and
+    proc.name = ssh and proc.cmdline contains "-L"
+  output: >
+    建立 SSH local port forward (command=%proc.cmdline container=%container.name)
+  priority: WARNING
+  tags: [tier_full_only, room4]
+
+- rule: Loopback Connection To Internal-Only Port 9090
+  desc: >
+    對僅綁定 127.0.0.1:9090 的內部服務建立本機連線，正常情況下只應由
+    locked-server 自身存取；經由 SSH tunnel 從 room4 存取時會出現此連線。
+  condition: >
+    evt.type = connect and container and
+    fd.sip = "127.0.0.1" and fd.sport = 9090
+  output: >
+    本機連線到內部服務 127.0.0.1:9090 (proc=%proc.name container=%container.name)
+  priority: WARNING
+  tags: [tier_full_only, room4]
+
+# ══════════════ room5：內部服務偵察 ══════════════
+
+- rule: Local Service Port Scan
+  desc: 容器內執行 ss/netstat 列出本機監聽 port，屬偵察行為
+  condition: >
+    spawned_process and container and
+    proc.name in (ss, netstat)
+  output: >
+    執行本機 port 偵察工具 (command=%proc.cmdline container=%container.name)
+  priority: INFO
+  tags: [tier_full_only, room5]
+
+- rule: Loopback Connection To Nonstandard Port 7777
+  desc: 對本機非標準 port 7777 建立連線，對應 room5 的謎語服務互動
+  condition: >
+    evt.type = connect and container and
+    fd.sip = "127.0.0.1" and fd.sport = 7777
+  output: >
+    本機連線到 port 7777 (proc=%proc.name container=%container.name)
+  priority: INFO
+  tags: [tier_full_only, room5]
+
+# ══════════════ room6/7/9/final/secret-a/secret-b：docker.sock 濫用 ══════════════
+
+- rule: Docker Socket Accessed From Container
+  desc: >
+    容器內程序存取 /var/run/docker.sock，可對 Docker Engine API 下達任意指令
+    （list/inspect/start/exec/network connect/save 等語意層級的差異，
+    在 syscall 層級無法細分，統一以此規則作為第一階段訊號）
+  condition: >
+    evt.type in (open, openat, connect) and container and
+    fd.name = /var/run/docker.sock
+  output: >
+    容器內存取 docker.sock (proc=%proc.name container=%container.name fd=%fd.name)
+  priority: WARNING
+  tags: [tier_basic, room6, room7, room9, final, secret-a, secret-b, docker_sock]
+
+- rule: Unexpected Child Process In Container Via Docker Exec
+  desc: >
+    容器內出現非預期的子程序，且其父程序為 containerd-shim/runc 而非該容器
+    原本的 entrypoint，可能是透過 docker exec 從外部注入的指令
+    （container escape 的核心訊號，對應 final/room6 的 ghost-gamma exec）
+  condition: >
+    spawned_process and container and
+    proc.pname in (containerd-shim, runc) and
+    not proc.name in (bash, sh)
+  output: >
+    容器內出現可能由外部注入的子程序 (proc=%proc.name pname=%proc.pname container=%container.name cmdline=%proc.cmdline)
+  priority: CRITICAL
+  tags: [tier_basic, final, room6, container_escape]
+
+- rule: Docker Build Executed In Container
+  desc: 容器內執行 docker build，對應 room7 的 Dockerfile 修復任務
+  condition: >
+    spawned_process and container and
+    proc.name = docker and proc.cmdline contains "build"
+  output: >
+    執行 docker build (command=%proc.cmdline container=%container.name)
+  priority: NOTICE
+  tags: [tier_full_only, room7]
+
+- rule: New Container Created Via Docker CLI
+  desc: >
+    容器內執行 docker run/create，可能建立新容器並掛載 host 路徑
+    （是否掛載 host 路徑需另外搭配 Docker daemon 設定確認，此規則僅為第一階段訊號）
+  condition: >
+    spawned_process and container and
+    proc.name = docker and (proc.cmdline contains " run " or proc.cmdline contains " create ")
+  output: >
+    執行 docker run/create (command=%proc.cmdline container=%container.name)
+  priority: NOTICE
+  tags: [tier_full_only, room7, room8]
+
+- rule: Docker Network Connect Executed
+  desc: 容器內執行 docker network connect，可能用於繞過 internal network 隔離
+  condition: >
+    spawned_process and container and
+    proc.name = docker and proc.cmdline contains "network connect"
+  output: >
+    執行 docker network connect (command=%proc.cmdline container=%container.name)
+  priority: WARNING
+  tags: [tier_basic, room9]
+
+- rule: Outbound Connection To Secret Network Subnet
+  desc: >
+    容器對 secret_net（172.22.0.0/24，internal: true）子網建立連線；
+    此網路原為隔離網段，出現連線通常代表已透過 docker network connect 加入該網路
+  condition: >
+    evt.type = connect and container and
+    fd.sip startswith "172.22."
+  output: >
+    連線到 secret_net 子網 (dest=%fd.rip:%fd.rport proc=%proc.name container=%container.name)
+  priority: WARNING
+  tags: [tier_basic, room9]
+
+- rule: Docker Save Or History Executed
+  desc: 容器內執行 docker save/history，可能用於匯出 image 尋找殘留在舊 layer 的機密
+  condition: >
+    spawned_process and container and
+    proc.name = docker and (proc.cmdline contains "save" or proc.cmdline contains "history")
+  output: >
+    執行 docker save/history (command=%proc.cmdline container=%container.name)
+  priority: NOTICE
+  tags: [tier_full_only, secret-b]
+
+- rule: Tar Extraction Into Tmp Directory
+  desc: 容器內對 /tmp 下的路徑執行 tar 解壓，對應 secret-b 解開 image layer
+  condition: >
+    spawned_process and container and
+    proc.name = tar and proc.cmdline contains "/tmp"
+  output: >
+    對 /tmp 執行 tar 解壓 (command=%proc.cmdline container=%container.name)
+  priority: INFO
+  tags: [tier_full_only, secret-b]
+
+- rule: Recursive Grep Under Tmp
+  desc: 對 /tmp 下目錄執行遞迴 grep，對應 secret-b 在解壓出的 layer 中搜尋機密字串
+  condition: >
+    spawned_process and container and
+    proc.name = grep and proc.cmdline contains "-r" and proc.cmdline contains "/tmp"
+  output: >
+    對 /tmp 執行遞迴 grep (command=%proc.cmdline container=%container.name)
+  priority: INFO
+  tags: [tier_full_only, secret-b]
+
+# ══════════════ room8：docker compose 操作 ══════════════
+
+- rule: Docker Compose Executed In Container
+  desc: 容器內執行 docker compose，建立新的子容器（對應 room8 修復任務）
+  condition: >
+    spawned_process and container and
+    ((proc.name = docker and proc.cmdline contains "compose") or proc.name = docker-compose)
+  output: >
+    執行 docker compose (command=%proc.cmdline container=%container.name)
+  priority: NOTICE
+  tags: [tier_full_only, room8]
+
+- rule: Local HTTP Request To Port 8080
+  desc: 容器內對本機 port 8080 發出 HTTP 請求，對應 room8 修復後驗證 app 服務
+  condition: >
+    spawned_process and container and
+    proc.name in (curl, wget) and proc.cmdline contains ":8080"
+  output: >
+    對本機 8080 發出 HTTP 請求 (command=%proc.cmdline container=%container.name)
+  priority: INFO
+  tags: [tier_full_only, room8]
+
+# ══════════════ room10：跨日誌關聯分析 ══════════════
+#
+# room10 的「玩家行為」是對靜態日誌檔做 grep/awk 分析，本身屬合法 forensic
+# 行為。以下規則描述的是「產生這些日誌的原始攻擊行為」，在目前以靜態日誌
+# 預先產生的設計下不會被觸發；若未來改為即時模擬攻擊流量，可啟用這些規則。
+
+- rule: Repeated SSH Auth Failures
+  desc: 短時間內大量 SSH 登入失敗，疑似暴力破解（room10 攻擊鏈第一步，目前為概念性規則）
+  condition: >
+    spawned_process and container and
+    proc.name = sshd and proc.cmdline contains "Failed password"
+  output: >
+    偵測到 SSH 登入失敗 (container=%container.name)
+  priority: WARNING
+  enabled: false
+  tags: [tier_full_only, room10]
+
+- rule: Access To Sensitive Export Endpoint
+  desc: 存取 /api/v1/users/export 等敏感匯出端點（room10 攻擊鏈第二步，目前為概念性規則）
+  condition: >
+    spawned_process and container and
+    proc.cmdline contains "/api/v1/users/export"
+  output: >
+    存取敏感匯出端點 (command=%proc.cmdline container=%container.name)
+  priority: WARNING
+  enabled: false
+  tags: [tier_full_only, room10]
+
+# ══════════════ room11：cron 提權 ══════════════
+
+- rule: Non-root Write To Cron Watched File
+  desc: 非 root 使用者寫入會被 root cron job 讀取的 /tmp/key，是提權鏈的第一步
+  condition: >
+    open_write and container and
+    user.uid != 0 and fd.name = /tmp/key
+  output: >
+    非 root 寫入 /tmp/key (user=%user.name container=%container.name)
+  priority: NOTICE
+  tags: [tier_full_only, room11]
+
+- rule: Cron Spawned Root Process
+  desc: cron daemon 以 root 身份產生子程序；異常排程可能是提權鏈的一部分
+  condition: >
+    spawned_process and container and
+    proc.pname = cron and user.uid = 0
+  output: >
+    cron 產生 root 子程序 (proc=%proc.name container=%container.name)
+  priority: NOTICE
+  tags: [tier_full_only, room11]
+
+- rule: World Readable File Written By Root Cron Chain
+  desc: root 身份的程序寫出 /tmp/result（644，player 可讀），可能是 root-only 資料被間接外洩
+  condition: >
+    open_write and container and
+    user.uid = 0 and fd.name = /tmp/result
+  output: >
+    root 程序寫出 /tmp/result (proc=%proc.name pname=%proc.pname container=%container.name)
+  priority: WARNING
+  tags: [tier_basic, room11]

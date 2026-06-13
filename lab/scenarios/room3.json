@@ -1,0 +1,26 @@
+{
+  "id": "room3",
+  "container": "room3",
+  "title": "背景程序 SIGUSR1 訊號洩漏 FLAG",
+  "vuln_type": "process-signal-exploitation",
+  "exploit_script": "exploits/room3.sh",
+  "exploit_steps": [
+    "ps aux 列出所有程序，找到 python3 /flag_daemon.py",
+    "取得其 PID（/var/run/flag_daemon.pid 被 chmod 000，刻意隱藏，需用 ps 而非讀 pid 檔）",
+    "（可選）cat /proc/<PID>/cmdline 確認是目標程序",
+    "kill -USR1 <PID> 對該程序送出 SIGUSR1 訊號",
+    "觀察程序輸出（或 strace -p <PID> -e write 監聽 write syscall）取得 FLAG: ..."
+  ],
+  "expected_outcome": "觸發背景程序輸出明文 FLAG（透過 IPC/signal 的資訊洩漏）",
+  "falco_rule_refs": [
+    "signal_to_other_process",
+    "ptrace_attach",
+    "proc_read_other_pid"
+  ],
+  "falco_relevant_behaviors": [
+    "kill / rt_sigqueueinfo syscall 對非自身程序送出 SIGUSR1",
+    "ps aux 偵察行為",
+    "strace -p <pid> 附加到其他程序（ptrace syscall）",
+    "對 /proc/<pid>/cmdline 等 /proc 檔案的讀取"
+  ]
+}

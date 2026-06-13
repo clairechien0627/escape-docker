@@ -1,0 +1,27 @@
+{
+  "id": "room11",
+  "container": "room11",
+  "title": "Root Cron Job 間接讀取受保護檔案",
+  "vuln_type": "cron-injection",
+  "exploit_script": "exploits/room11.sh",
+  "exploit_steps": [
+    "crontab -l 與 cat /etc/cron.d/* 找到 '* * * * * root /usr/local/bin/encrypt.sh'",
+    "cat /usr/local/bin/encrypt.sh，理解邏輯：讀 /tmp/key，若內容為 'unlock'，將 /secret/data（400 root:root）輸出到 /tmp/result（644）",
+    "echo 'unlock' > /tmp/key（player 對 /tmp 有寫入權限）",
+    "等待 cron daemon 下一分鐘以 root 身份執行 encrypt.sh，讀取 /secret/data 並寫出 /tmp/result",
+    "cat /tmp/result（或 tail -f /var/log/encrypt.log 觀察執行記錄）取得 FLAG"
+  ],
+  "expected_outcome": "利用以 root 執行的 cron job 作為代理，間接讀取本來受 chmod 400 root:root 保護、player 無權限直接存取的 /secret/data 內容",
+  "falco_rule_refs": [
+    "tmp_file_written_by_nonroot",
+    "cron_child_process_root",
+    "secret_file_read_by_root_process",
+    "world_readable_file_written_by_root"
+  ],
+  "falco_relevant_behaviors": [
+    "對 /tmp/key 的寫入（由非 root 使用者寫入後被 root 程序讀取，跨權限邊界的檔案傳遞）",
+    "cron daemon 週期性 fork 出 /usr/local/bin/encrypt.sh 並以 uid 0 執行",
+    "該 root 程序對 /secret/data（敏感路徑）的 open/read",
+    "隨後對 /tmp/result 的 write（uid 0 寫出，被低權限使用者讀取）"
+  ]
+}

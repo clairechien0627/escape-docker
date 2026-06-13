@@ -1,0 +1,30 @@
+{
+  "id": "room4",
+  "container": "room4",
+  "title": "SSH 跳板 + Port Forwarding 存取內部服務",
+  "vuln_type": "ssh-key-based-pivot",
+  "exploit_script": "exploits/room4.sh",
+  "exploit_steps": [
+    "cat /etc/motd 與 cat ~/.ssh/config 確認已預先配置 Host locked-server（User player, Port 22）",
+    "ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 生成金鑰",
+    "room4:/home/player/locked-server-ssh 與 locked-server:/home/player/.ssh 是同一個共享 volume（設定錯誤），把公鑰 cat 進 ~/locked-server-ssh/authorized_keys 即等於寫入 locked-server 的 authorized_keys（locked-server 僅允許 pubkey 認證）",
+    "ssh locked-server 確認可進入對方容器",
+    "ssh -L 8888:localhost:9090 locked-server -N 建立本地端口轉發，暴露對方僅綁定 127.0.0.1:9090 的 flag_server",
+    "curl http://localhost:8888/flag 取得 FLAG"
+  ],
+  "expected_outcome": "從 room4 跳板進入 locked-server 容器，並透過 SSH tunnel 存取對方僅限 localhost 的內部 HTTP API 取得 FLAG",
+  "falco_rule_refs": [
+    "ssh_keygen_exec",
+    "authorized_keys_modified",
+    "ssh_port_forward_established",
+    "internal_service_access_via_tunnel"
+  ],
+  "falco_relevant_behaviors": [
+    "ssh-keygen 產生金鑰",
+    "寫入/修改 ~/.ssh/authorized_keys（在 locked-server 上）",
+    "sshd 接受新的 pubkey 連線",
+    "SSH 連線中夾帶的 -L port forwarding（產生額外的 listen socket）",
+    "對內部服務 127.0.0.1:9090 的非預期 outbound 連線"
+  ],
+  "notes": "locked-server 的 sshd 為 pubkey-only，且未預置 authorized_keys；room4 與 locked-server 共享一個 volume（room4:/home/player/locked-server-ssh <-> locked-server:/home/player/.ssh），玩家/腳本只要把公鑰寫進這個共享路徑即可完成 authorized_keys 植入，不需要 host 端 docker exec 權限。"
+}

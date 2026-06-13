@@ -1,0 +1,24 @@
+{
+  "id": "room1",
+  "container": "room1",
+  "title": "Base64 弱混淆 FLAG 隱藏於大量干擾檔案",
+  "vuln_type": "exposed-secret",
+  "exploit_script": "exploits/room1.sh",
+  "exploit_steps": [
+    "find /home/player/archive -type f 列出大量 dir_NNN 目錄與檔案",
+    "find /home/player/archive -name '*.encoded' 縮小範圍找出 dir_037/backups/2023/system_backup.encoded",
+    "（可選）strings /home/player/binary_clue 取得提示，指向 archive 目錄",
+    "base64 -d 解碼該檔案內容",
+    "排除假 flag（dir_012/readme.encoded.fake、dir_055/flag.txt），確認真正 FLAG 格式為 EscapeDocker{...}"
+  ],
+  "expected_outcome": "取得 base64 解碼後的 FLAG 字串",
+  "falco_rule_refs": [
+    "recursive_find_archive",
+    "base64_decode_exec"
+  ],
+  "falco_relevant_behaviors": [
+    "對 /home/player/archive/ 大量目錄的遞迴搜尋（find 大量檔案存取）",
+    "base64 指令執行",
+    "對 .encoded 副檔名檔案的讀取"
+  ]
+}

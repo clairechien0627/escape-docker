@@ -1,0 +1,26 @@
+{
+  "id": "room2",
+  "container": "room2",
+  "title": "Sudo 腳本引數注入提權",
+  "vuln_type": "sudo-misconfiguration",
+  "exploit_script": "exploits/room2.sh",
+  "exploit_steps": [
+    "sudo -l 確認可以 NOPASSWD 執行 /usr/local/bin/backup.sh",
+    "cat /usr/local/bin/backup.sh，發現 cp $1 /tmp/out 沒有引號保護",
+    "sudo /usr/local/bin/backup.sh /secret/flag.txt（以 root 身份 cp /secret/flag.txt 到 /tmp/out）",
+    "cat /tmp/out（/tmp/out 為 644，player 可讀）取得 FLAG"
+  ],
+  "expected_outcome": "透過 sudo 提權繞過 /secret/flag.txt 的 chmod 400 root:root 限制，讀到 FLAG 內容",
+  "falco_rule_refs": [
+    "sudo_exec_backup_script",
+    "secret_file_read_via_root",
+    "dac_read_search_capability_use"
+  ],
+  "falco_relevant_behaviors": [
+    "sudo 執行（execve 並切換 euid 為 root）",
+    "執行 /usr/local/bin/backup.sh 並帶有 /secret/ 路徑參數",
+    "對 /secret/flag.txt 的 open/read（由非預期的 uid 0 流程觸發）",
+    "寫入 /tmp/out 後立即讀取",
+    "SETUID/DAC_READ_SEARCH capability 的實際使用"
+  ]
+}
