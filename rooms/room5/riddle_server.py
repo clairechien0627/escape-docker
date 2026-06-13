@@ -6,7 +6,7 @@ seed = os.environ.get("FLAG_SEED", "escape_docker_dev_seed")
 flag = "EscapeDocker{" + hashlib.sha256(f"{seed}-room5".encode()).hexdigest()[:16] + "}"
 PORT = 7777
 
-RIDDLE = b"""
+RIDDLE = """
 ==================================
   The Wire Challenge — Port 7777
 ==================================
@@ -18,7 +18,7 @@ RIDDLE = b"""
   我是什麼？
 
 請輸入答案（小寫，一個單詞）：
-"""
+""".encode("utf-8")
 
 ANSWER = b"hostname"
 
@@ -29,7 +29,7 @@ def handle(conn):
         if data in (b"hostname", b"hostname\n", b"container name", b"name"):
             conn.sendall(f"\n正確！🎉\nFLAG: {flag}\n".encode())
         else:
-            conn.sendall(b"\n不對，再想想... 連線已關閉。\n")
+            conn.sendall("\n不對，再想想... 連線已關閉。\n".encode("utf-8"))
     except Exception:
         pass
     finally:

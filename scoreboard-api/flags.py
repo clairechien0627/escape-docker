@@ -79,9 +79,9 @@ HINTS: dict[str, list[dict]] = {
         {"level": 3, "cost": 50, "text": "PORT=$(ss -tlnp | grep LISTEN | awk '{print $4}' | cut -d: -f2 | tail -1) && nc localhost $PORT"},
     ],
     "room6":  [
-        {"level": 1, "cost": 0,  "text": "有 3 個停止的容器，每個藏著 FLAG 的一部分"},
-        {"level": 2, "cost": 25, "text": "docker ps -a 找到 ghost-alpha/beta/gamma，分別用 logs、inspect、exec 讀取"},
-        {"level": 3, "cost": 50, "text": "docker logs ghost-alpha; docker inspect ghost-beta | grep FLAG; docker start ghost-gamma && docker exec ghost-gamma cat /app/secret/fragment.txt"},
+        {"level": 1, "cost": 0,  "text": "有好幾個停止的容器，藏著跨容器洩漏的機密資訊，其中一個就是本關的 FLAG"},
+        {"level": 2, "cost": 25, "text": "docker ps -a 找到 ghost-alpha/beta/gamma/delta，分別用 logs、inspect、exec 讀取"},
+        {"level": 3, "cost": 50, "text": "docker logs ghost-delta 直接印出本關的 EscapeDocker{...}；其餘 ghost-alpha/beta/gamma 是 docker.sock 濫用的練習，跟 FLAG 無關"},
     ],
     "room7":  [
         {"level": 1, "cost": 0,  "text": "有個 Dockerfile 需要修正才能讓程式輸出 FLAG"},

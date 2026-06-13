@@ -6,10 +6,11 @@ cat > /etc/motd << 'MOTD'
   ║   🐳  ESCAPE DOCKER  —  Room 6: The Shipyard      ║
   ╚═══════════════════════════════════════════════════╝
 
-  有三個停止的容器，每個藏著 FLAG 的一部分：
+  有好幾個停止的容器，藏著跨容器洩漏的機密資訊：
     ghost-alpha  → 用 docker logs 找
     ghost-beta   → 用 docker inspect 找（ENV 裡）
     ghost-gamma  → 需要 start 後用 docker exec 讀
+    ghost-delta  → 用 docker logs 找（這裡才是本關真正的 FLAG！）
 
   工具：
     docker ps -a                              # 列出所有容器（包含停止的）
@@ -19,8 +20,9 @@ cat > /etc/motd << 'MOTD'
     docker start ghost-gamma                  # 啟動停止的容器
     docker exec ghost-gamma cat /app/secret/fragment.txt  # 讀取檔案
     docker diff ghost-gamma                   # 查看容器檔案變化
+    docker logs ghost-delta                   # 讀取真正的 FLAG（EscapeDocker{...}）
 
-  三個部分合起來就是完整的 FLAG！
+  把 ghost-delta 印出的 EscapeDocker{...} 提交到 scoreboard 即可過關！
 
 MOTD
 

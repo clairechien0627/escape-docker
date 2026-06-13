@@ -187,28 +187,40 @@ ps aux | grep flag
 
 # Step 2：找到 PID（通常是 python3 /flag_daemon.py）
 
-# Step 3：發送 SIGUSR1 觸發輸出
+# Step 3：先用 strace「背景」attach 上去監聽 write()，
+#         再送 SIGUSR1 觸發輸出（順序很重要，見下方注意事項）
+strace -p <PID> -e write -s 200 &
 kill -USR1 <PID>
 
-# 終端機輸出會出現：
-# [flag_daemon] SIGUSR1 received! FLAG: EscapeDocker{xxxxxxxxxxxxxxxx}
+# strace 輸出會出現：
+# write(1, "\n[flag_daemon] SIGUSR1 received! FLAG: EscapeDocker{xxxxxxxxxxxxxxxx}", 69) = 69
 ```
 
 ### 進階解法（讀 /proc）
 
 ```bash
-# 找到 PID 後讀完整指令
+# 找到 PID 後讀完整指令，確認就是 flag_daemon
 cat /proc/<PID>/cmdline | tr '\0' ' '
-
-# 或用 strace 截獲（需要 strace 工具）
-strace -p <PID> 2>&1 | head -20
 ```
 
 ### 注意事項
 
-- `flag_daemon.py` 每 30 秒輸出一次混淆訊息（非 FLAG）
-- 必須送 `SIGUSR1` 才會輸出明文 FLAG
-- 沒送訊號只會看到 `[flag_daemon] Status OK (pid=xxx)`
+- `flag_daemon.py` 每 30 秒輸出一次混淆訊息（非 FLAG），收到 `SIGUSR1`
+  才會印出明文 FLAG
+- **`kill -USR1 <PID>` 之後，FLAG 不會直接顯示在你的終端機**：
+  daemon 印出的內容寫到它自己的 stdout（也就是 container 主 process
+  的 stdout，對應 `docker logs`），不是你 `docker exec` 進來的這個
+  pty。一般玩家沒有 host 端權限可以看 `docker logs`，所以**必須靠
+  `strace -e write` 把 `write()` 系統呼叫的參數截下來看**，這份輸出
+  才會印在你目前的終端機。
+- **順序必須是「先 attach strace，再 kill -USR1」**：`SIGUSR1` 的
+  handler 是同步、立刻執行的——如果先 `kill` 再 `strace -p <PID>`，
+  那次 `write()` 早就結束了，只會看到後續週期性的
+  `[flag_daemon] Status OK (pid=xxx)`。用 `strace ... &` 背景執行，讓
+  它先掛上去（daemon 大部分時間在 `pselect6` 裡 sleep，attach 只要
+  幾毫秒），下一行馬上 `kill -USR1 <PID>` 即可。
+- `strace` 預設字串只顯示前 32 個字元會把 FLAG 截斷，務必加
+  `-s 200`（或更大的數字）。
 
 ---
 
@@ -224,30 +236,26 @@ ssh-keygen -t ed25519 -C "ctf" -f ~/.ssh/id_ed25519
 # 連按 Enter（不設 passphrase）
 
 # Step 2：把公鑰安裝到 locked-server
-ssh-copy-id -i ~/.ssh/id_ed25519.pub player@locked-server
-# 會要求輸入密碼（locked-server 在設定公鑰前允許密碼）
-# 密碼：（查看 locked-server/setup.sh，預設為空或指定密碼）
+# locked-server 的 sshd 是 pubkey-only、且沒有預先放好 authorized_keys，
+# ssh-copy-id / 密碼登入都行不通。
+# 但 room4:/home/player/locked-server-ssh 和
+# locked-server:/home/player/.ssh 是同一個共享 volume（設定錯誤），
+# 直接寫進這個路徑就等於寫進 locked-server 的 authorized_keys：
+cat ~/.ssh/id_ed25519.pub >> ~/locked-server-ssh/authorized_keys
+chmod 600 ~/locked-server-ssh/authorized_keys
 
-# 或手動操作：
-cat ~/.ssh/id_ed25519.pub
-# 複製輸出，然後：
-ssh player@locked-server "mkdir -p ~/.ssh && echo '<公鑰內容>' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
-
-# Step 3：SSH 登入
+# Step 3：SSH 登入，確認可以進去（看完 ~/README.txt 後記得 exit 回到 room4）
 ssh locked-server
-# 成功登入後，FLAG 在 /etc/motd 或 /home/player/
+exit
 
-# 進階 Step 4：建立 SSH Tunnel
-ssh -L 8888:localhost:9090 locked-server
-# 另開終端機（或在背景 &）：
+# 進階 Step 4：注意！以下兩行要在 room4 執行（不是在 locked-server 裡）
+# -L 8888:localhost:9090 是「room4 的 8888」轉發到「locked-server 的 9090」，
+# 發起方必須是 room4（它有私鑰、也有 ~/.ssh/config 裡的 Host locked-server）。
+# 如果在 locked-server 裡面再對 locked-server 開一次 ssh，
+# 會變成「locked-server 連線到自己」，缺私鑰會 Permission denied，
+# curl 也會 connection refused。
+ssh -f -L 8888:localhost:9090 locked-server -N
 curl localhost:8888/flag
-```
-
-### locked-server 密碼說明
-
-```bash
-# 在 locked-server 容器的 setup.sh 中查看
-docker exec -it locked-server cat /setup.sh
 ```
 
 ---
@@ -303,35 +311,36 @@ curl mystery.internal    # 連不到（那個 IP 不存在）
 ```bash
 # Step 1：列出所有容器（包含停止的）
 docker ps -a
-# 找到 ghost-alpha、ghost-beta、ghost-gamma
+# 找到 ghost-alpha、ghost-beta、ghost-gamma、ghost-delta
 
-# ── ghost-alpha：從 logs 取得 ──
+# ── ghost-alpha：從 logs 取得（docker.sock 濫用練習，跟 FLAG 無關）──
 docker logs ghost-alpha
 # 輸出包含：FLAG_PART_1: EscapeDocker-part1-xxxxxxxx
 
-# ── ghost-beta：從 inspect 環境變數取得 ──
+# ── ghost-beta：從 inspect 環境變數取得（同上，練習用）──
 docker inspect ghost-beta | grep -i flag
 # 或：
 docker inspect ghost-beta --format '{{json .Config.Env}}' | python3 -m json.tool
 # 找到 SECRET_FLAG_PART2=part2_inspect_me
 
-# ── ghost-gamma：啟動後 exec 讀檔 ──
+# ── ghost-gamma：啟動後 exec 讀檔（同上，練習用）──
+# 注意：ghost-gamma 的指令會立刻執行完並 exit（restart: "no"），
+# docker start 之後 container 可能在你打下一行指令前就已經停止，
+# 此時 docker exec 會報 "is not running"。
+# 改用 docker cp（對已停止的 container 仍可讀取檔案系統）：
 docker start ghost-gamma
-docker exec ghost-gamma cat /app/secret/fragment.txt
+docker exec ghost-gamma cat /app/secret/fragment.txt \
+  || docker cp ghost-gamma:/app/secret/fragment.txt - | tar -xO
+
+# ── ghost-delta：本關真正的 FLAG ──
+docker logs ghost-delta
+# 輸出：FLAG: EscapeDocker{xxxxxxxxxxxxxxxx}
 ```
 
-> **注意：** 三個容器的資訊是分開的線索，Room 6 真正的 FLAG 要從 `flags.py` 生成後提交，
-> 三個 ghost 容器只是謎題道具，讓玩家練習 `docker logs/inspect/exec`。
-
-### 真正的 FLAG 取得方式
-
-Room 6 的 FLAG 藏在 `room6` 容器本身的 setup.sh 裡（用 `FLAG_SEED-room6` 生成），不是 ghost 容器裡。玩家完成三個 ghost 的探索後，系統會引導他們找到真正的 FLAG：
-
-```bash
-# 在 room6 容器內：
-cat /home/player/.flag_hint
-# 或查看 motd 的最後說明
-```
+> **注意：** ghost-alpha/beta/gamma 是 `docker.sock` 濫用的練習道具（用 `logs`/
+> `inspect`/`exec` 三種方式跨容器讀取資訊），跟本關要提交的 FLAG 無關。
+> 真正要提交的 FLAG 在 **ghost-delta** 的 `docker logs` 輸出裡，
+> 格式為 `EscapeDocker{...}`，直接複製貼到 scoreboard 提交即可。
 
 ---
 

@@ -29,8 +29,11 @@ cat > /etc/motd << 'MOTD'
        ssh-keygen -t ed25519 -C "ctf_player" -f ~/.ssh/id_ed25519
 
     2. 把公鑰安裝到 locked-server
-       ssh-copy-id -i ~/.ssh/id_ed25519.pub player@locked-server
-       （或手動複製到 locked-server 的 ~/.ssh/authorized_keys）
+       locked-server 的 ~/.ssh 目錄被掛載成一個跟這台機器共用的 volume，
+       在這台機器上看到的路徑是 ~/locked-server-ssh —— 把公鑰寫進去
+       就等於寫進 locked-server 的 authorized_keys：
+         cat ~/.ssh/id_ed25519.pub >> ~/locked-server-ssh/authorized_keys
+         chmod 600 ~/locked-server-ssh/authorized_keys
 
     3. SSH 登入
        ssh locked-server

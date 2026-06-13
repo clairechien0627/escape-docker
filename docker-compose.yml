@@ -141,6 +141,8 @@ services:
     container_name: room4
     hostname: room4
     <<: *room-defaults
+    volumes:
+      - locked_server_ssh:/home/player/locked-server-ssh
     networks:
       - game_net
       - ssh_net
@@ -151,6 +153,8 @@ services:
     build: ./rooms/helpers/locked-server
     container_name: locked-server
     hostname: locked-server
+    volumes:
+      - locked_server_ssh:/home/player/.ssh
     networks:
       - ssh_net
     environment:
@@ -350,6 +354,30 @@ services:
     networks:
       - docker_net
     restart: "no"
+
+  # ghost-delta：藏著 Room 6 真正的 FLAG6（與 scoreboard-api/flags.py 的
+  # _gen("room6") 公式一致），玩家用 docker ps -a 找到後 docker logs 讀取
+  ghost-delta:
+    image: alpine:3.19
+    container_name: ghost-delta
+    command: >
+      sh -c "
+        PART=$$(printf '%s' '${FLAG_SEED:-escape_docker_dev_seed}-room6' | sha256sum | cut -c1-16) &&
+        echo \"FLAG: EscapeDocker{$${PART}}\"
+      "
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
+    networks:
+      - docker_net
+    restart: "no"
+
+# ══════════════ Volumes ══════════════
+volumes:
+  # room4 ↔ locked-server 共享的「設定錯誤」volume：
+  # room4 把它掛在 /home/player/locked-server-ssh，
+  # locked-server 把它掛在 /home/player/.ssh，
+  # 讓 room4 的玩家可以直接寫入 locked-server 的 authorized_keys
+  locked_server_ssh:
 
 # ══════════════ Networks ══════════════
 networks:

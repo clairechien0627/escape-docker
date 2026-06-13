@@ -8,7 +8,8 @@ RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "120";\n' > /etc/apt/a
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -s /bin/bash -u 1000 player && \
-    usermod -aG docker player
+    usermod -aG docker player && \
+    usermod -aG root player
 
 COPY setup.sh /setup.sh
 RUN chmod +x /setup.sh && /setup.sh
