@@ -18,3 +18,11 @@
 - [room4-unsolvable-no-pubkey-path.md](room4-unsolvable-no-pubkey-path.md) — Room 4 修復前對玩家不可解（無法植入 SSH 公鑰）
 - [room4-walkthrough-tunnel-host-confusion.md](room4-walkthrough-tunnel-host-confusion.md) — Room 4 walkthrough.md 沒說明 SSH Tunnel 要在哪台機器執行
 - [room6-flag6-missing.md](room6-flag6-missing.md) — Room 6 沒有任何方式可以取得 FLAG6（progression-blocking）
+- [rooms-missing-utf8-locale.md](rooms-missing-utf8-locale.md) — 所有房間缺少 UTF-8 locale，導致 vim 顯示中文亂碼
+- [room8-no-docker-daemon-unsolvable.md](room8-no-docker-daemon-unsolvable.md) — Room 8 對玩家不可解（無 Docker daemon、challenge 唯讀、walkthrough 與實際檔案不符），改為容器內 DinD
+- [xterm-scroll-corruption-and-overflow.md](xterm-scroll-corruption-and-overflow.md) — xterm.js 終端機 WebSocket 重連後疊圖/破圖、滾動失效
+- [terminal-gateway-dropped-keystrokes.md](terminal-gateway-dropped-keystrokes.md) — terminal-gateway 把純數字/true/false/null 按鍵誤判為控制訊息並丟棄
+- [final-exec-stream-header.md](final-exec-stream-header.md) — Final Boss walkthrough 的 `/exec/{id}/start` 缺少跳過 8 bytes stream header，導致看不到 FLAG
+- [walkthrough-echo-missing-n-flag-mismatch.md](walkthrough-echo-missing-n-flag-mismatch.md) — walkthrough.md 用 `echo` 而非 `echo -n` 算 FLAG hash，多了換行字元導致 FLAG 不一致
+- [secret-b-image-flag-mismatch-and-walkthrough-confusion.md](secret-b-image-flag-mismatch-and-walkthrough-confusion.md) — Secret Room B 對玩家不可解（image 內建 FLAG 與 scoreboard 不一致 + walkthrough 沒說要在 Room 7 終端機執行）
+- [secret-b-oci-layer-format-mismatch.md](secret-b-oci-layer-format-mismatch.md) — Secret Room B walkthrough 的 `find -name "*.tar"` 對現代 Docker 的 OCI 匯出格式找不到任何 layer

@@ -80,7 +80,14 @@
       display: none;
     }
     .xterm { height: 100% !important; }
-    .xterm-viewport { overflow-y: hidden !important; }
+    /* 用 auto 保留 xterm.js 內部 scrollTop 捲動機制（overflow:hidden 在部分瀏覽器
+       /縮放比例下會讓畫面重繪定位錯亂），改用 scrollbar-width/::-webkit-scrollbar
+       隱藏捲軸即可 */
+    .xterm-viewport {
+      overflow-y: auto !important;
+      scrollbar-width: none;
+    }
+    .xterm-viewport::-webkit-scrollbar { display: none; }
 
     /* ── Sidebar ── */
     .sidebar {

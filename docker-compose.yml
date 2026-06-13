@@ -204,12 +204,11 @@ services:
     container_name: room8
     hostname: room8
     <<: *room-defaults
+    privileged: true
     networks:
       - game_net
     environment:
       - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
-    volumes:
-      - ./rooms/room8/challenge:/home/player/challenge:ro
 
   room9:
     build: ./rooms/room9
@@ -303,7 +302,10 @@ services:
       - LEAKED_SECRET=${FLAG_SEED:-escape_docker_dev_seed}   # 故意洩漏
 
   secret-b:
-    build: ./rooms/secret-b
+    build:
+      context: ./rooms/secret-b
+      args:
+        - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
     container_name: secret-b
     hostname: secret-b
     <<: *room-defaults

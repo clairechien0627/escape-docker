@@ -21,7 +21,7 @@ class EscapeTerminal {
       cursorBlink: true,
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace',
       fontSize: 14,
-      lineHeight: 1.3,
+      lineHeight: 1,
       theme: {
         background:    '#0d1117',
         foreground:    '#e6edf3',
@@ -106,6 +106,10 @@ class EscapeTerminal {
       this.connected = true;
       this.reconnecting = false;
       this._hideDisconnectBanner();
+      // 重置終端機狀態（alternate screen / scroll region / 游標等），避免上一個
+      // session（可能斷線在 vim/less 等全螢幕程式的 escape sequence 中途）的殘留
+      // 狀態污染新 pty session 的畫面，造成滾動時的疊圖/破圖
+      this.term.reset();
       this._onResize();
     };
 

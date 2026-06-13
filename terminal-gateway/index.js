@@ -66,16 +66,22 @@ wss.on('connection', async (ws, req) => {
 
   // WebSocket → pty stdin
   ws.on('message', (msg) => {
+    // JSON 控制訊息（resize）：必須是帶 type 欄位的物件，
+    // 否則（包含純數字/true/false/null 等剛好也是合法 JSON 的單一按鍵）
+    // 都當成終端機輸入直接寫入 pty
+    let parsed = null;
     try {
-      // JSON 控制訊息
-      const parsed = JSON.parse(msg);
-      if (parsed.type === 'resize') {
-        resizeTerminal(pty, parsed.cols, parsed.rows);
-      }
+      parsed = JSON.parse(msg);
     } catch {
-      // 純文字 → 直接輸入到 terminal
-      if (pty) pty.write(msg.toString());
+      // 非 JSON，當成終端機輸入
     }
+
+    if (parsed && typeof parsed === 'object' && parsed.type === 'resize') {
+      resizeTerminal(pty, parsed.cols, parsed.rows);
+      return;
+    }
+
+    if (pty) pty.write(msg.toString());
   });
 
   ws.on('close', () => {

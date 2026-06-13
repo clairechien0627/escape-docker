@@ -121,6 +121,6 @@ HINTS: dict[str, list[dict]] = {
     "secret-b": [
         {"level": 1, "cost": 0,  "text": "有個 image 的歷史裡藏著秘密"},
         {"level": 2, "cost": 25, "text": "docker history escape-docker-secret-b:latest"},
-        {"level": 3, "cost": 50, "text": "docker save escape-docker-secret-b | tar x -C /tmp/layers && grep -r 'EscapeDocker' /tmp/layers"},
+        {"level": 3, "cost": 50, "text": "docker save escape-docker-secret-b | tar x -C /tmp/layers && cd /tmp/layers/blobs/sha256 && for f in *; do tar tf \"$f\" 2>/dev/null | grep -q ghost_layer && tar xf \"$f\" -O tmp/ghost_layer/deleted_secret.txt; done"},
     ],
 }

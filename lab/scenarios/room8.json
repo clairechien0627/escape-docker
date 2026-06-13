@@ -24,5 +24,5 @@
     "對 port 8080 的本機 HTTP 連線（curl）",
     "player 容器內透過 docker group 建立新容器並對外暴露 port"
   ],
-  "notes": "需先確認 room8 容器內是否有可連線的 Docker daemon（docker.sock 未在 compose 中掛載，可能依賴內部 dockerd），實作前要驗證 docker compose up 是否真的可執行。"
+  "notes": "room8 內建獨立的 Docker daemon（DinD，privileged + dockerd），docker compose 操作的是 room8 自己內部的 Docker，與 host 無關；/home/player/challenge 為可寫目錄（由 image 內建）。"
 }

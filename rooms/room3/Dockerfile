@@ -1,5 +1,9 @@
 FROM ubuntu:22.04
 
+# 設定 UTF-8 locale，避免 vim/less 等工具在容器內顯示中文（多位元組字元）
+# 時因為預設 POSIX locale 把 'encoding' 退回 latin1 而出現亂碼
+ENV LANG=C.utf8 LC_ALL=C.utf8
+
 ENV DEBIAN_FRONTEND=noninteractive
 RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "120";\n' > /etc/apt/apt.conf.d/80-retries \
     && apt-get update && apt-get install -y \
