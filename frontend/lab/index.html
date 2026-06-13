@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edge Container Security Lab — Escape Docker</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .page { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+    h1 { font-size: 1.4rem; color: var(--green); margin-bottom: 0.25rem; }
+    .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 1.5rem; }
+    .section-title { font-size: 1rem; font-weight: 700; color: var(--text-main); margin: 1.5rem 0 0.75rem; }
+
+    .scenario-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.85rem;
+    }
+    .scenario-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .scenario-card h3 { font-size: 0.95rem; color: var(--text-main); }
+    .scenario-id { font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono); }
+    .scenario-outcome { font-size: 0.78rem; color: var(--text-dim); flex-grow: 1; }
+    .scenario-refs { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+    .scenario-actions { display: flex; justify-content: flex-end; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th { text-align:left; padding: 0.4rem 0.6rem; font-size:0.7rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); border-bottom:1px solid var(--border); }
+    td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--bg-hover); }
+    tr:hover td { background: var(--bg-hover); }
+    .status-success { color: var(--green); }
+    .status-failed, .status-error, .status-timeout { color: var(--red); }
+    .status-running, .status-starting { color: var(--blue); }
+    .flag-val { font-size: 0.7rem; color: var(--cyan); font-family: monospace; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="../index.html">🐳 Escape Docker</a>
+  <div class="navbar-links">
+    <a href="../map.html">🗺️ Map</a>
+    <a href="index.html" class="active">🧪 Lab</a>
+  </div>
+</nav>
+
+<div class="page">
+  <h1>🧪 Edge Container Security Lab</h1>
+  <p class="subtitle">每個情境模擬一種容器逃逸／提權手法：選擇情境並執行，即可即時觀察攻擊腳本的每一步，以及對應的 Falco 告警。</p>
+
+  <div class="section-title">📋 場景目錄</div>
+  <div class="scenario-grid" id="scenario-grid">
+    <p class="text-dim">載入中…</p>
+  </div>
+
+  <div class="section-title">🕓 執行歷史</div>
+  <div class="card">
+    <table id="runs-table">
+      <thead>
+        <tr><th>場景</th><th>狀態</th><th>FLAG</th><th>耗時</th><th>開始時間</th><th></th></tr>
+      </thead>
+      <tbody><tr><td colspan="6" class="text-dim">載入中…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/api.js"></script>
+<script>
+function getAdminToken() {
+  let token = localStorage.getItem('escape_docker_admin_token');
+  if (!token) {
+    token = window.prompt('執行實驗需要 Admin Token：');
+    if (token) localStorage.setItem('escape_docker_admin_token', token);
+  }
+  return token;
+}
+
+async function loadScenarios() {
+  const grid = document.getElementById('scenario-grid');
+  try {
+    const scenarios = await apiFetch('/lab/scenarios');
+    grid.innerHTML = scenarios.map((s) => `
+      <div class="scenario-card">
+        <div class="scenario-id">${s.id} · ${s.container}</div>
+        <h3>${s.title}</h3>
+        <div class="scenario-refs">
+          <span class="badge badge-blue">${s.vuln_type}</span>
+          ${(s.falco_rule_refs || []).map((r) => `<span class="badge badge-dim">${r}</span>`).join('')}
+        </div>
+        <div class="scenario-outcome">${s.expected_outcome}</div>
+        <div class="scenario-actions">
+          <button class="btn btn-primary run-btn" data-scenario-id="${s.id}">▶ 執行</button>
+        </div>
+      </div>
+    `).join('');
+    grid.querySelectorAll('.run-btn').forEach((btn) => {
+      btn.addEventListener('click', () => runScenario(btn.dataset.scenarioId, btn));
+    });
+  } catch (e) {
+    grid.innerHTML = `<p class="text-red">載入場景失敗：${e.message}</p>`;
+  }
+}
+
+async function runScenario(scenarioId, btn) {
+  const token = getAdminToken();
+  if (!token) return;
+
+  btn.disabled = true;
+  btn.textContent = '啟動中…';
+  try {
+    const run = await apiFetch('/lab/runs', {
+      method: 'POST',
+      headers: { 'X-Admin-Token': token },
+      body: JSON.stringify({ scenario_id: scenarioId }),
+    });
+    window.location.href = `run.html?id=${encodeURIComponent(run.id)}`;
+  } catch (e) {
+    toast(`執行失敗：${e.message}`, 'error');
+    btn.disabled = false;
+    btn.textContent = '▶ 執行';
+  }
+}
+
+function statusLabel(status) {
+  const map = {
+    success: '✅ success', failed: '❌ failed', error: '⚠️ error',
+    timeout: '⏱️ timeout', running: '🔵 running', starting: '🔵 starting',
+  };
+  return map[status] || status || '—';
+}
+
+async function loadRuns() {
+  const tbody = document.querySelector('#runs-table tbody');
+  try {
+    const runs = await apiFetch('/lab/runs');
+    if (runs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-dim">尚無執行紀錄</td></tr>';
+      return;
+    }
+    tbody.innerHTML = runs.slice(0, 30).map((r) => `
+      <tr>
+        <td>${r.scenario_id}</td>
+        <td class="status-${r.status}">${statusLabel(r.status)}</td>
+        <td class="flag-val">${r.flag_found || '—'}</td>
+        <td>${r.duration_ms != null ? r.duration_ms + ' ms' : '—'}</td>
+        <td style="font-size:0.72rem;color:var(--text-dim)">${r.started_at ? new Date(r.started_at).toLocaleString() : '—'}</td>
+        <td><a href="run.html?id=${encodeURIComponent(r.id)}">查看</a></td>
+      </tr>
+    `).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-red">載入失敗：${e.message}</td></tr>`;
+  }
+}
+
+loadScenarios();
+loadRuns();
+setInterval(loadRuns, 10000);
+</script>
+</body>
+</html>

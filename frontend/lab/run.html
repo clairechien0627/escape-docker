@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>實驗執行紀錄 — Escape Docker Lab</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .page { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+    h1 { font-size: 1.3rem; color: var(--green); margin-bottom: 0.25rem; }
+    .run-meta { color: var(--text-dim); font-size: 0.82rem; margin-bottom: 1rem; font-family: var(--font-mono); }
+
+    .status-success  { color: var(--green); }
+    .status-failed, .status-error, .status-timeout { color: var(--red); }
+    .status-running, .status-starting { color: var(--blue); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+    .section-title { font-size: 0.95rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.75rem; }
+
+    .step {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 0.8rem;
+      margin-bottom: 0.6rem;
+    }
+    .step-head { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.85rem; }
+    .step-head .step-name { flex-grow: 1; color: var(--text-main); }
+    .step-exit-ok  { color: var(--green); }
+    .step-exit-bad { color: var(--red); }
+    .step-duration { color: var(--text-muted); font-size: 0.72rem; }
+    .step pre {
+      margin-top: 0.5rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .result-box {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.8rem;
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      display: none;
+    }
+    .result-box.show { display: block; }
+    .result-row { display: flex; justify-content: space-between; padding: 0.2rem 0; }
+    .result-row .label { color: var(--text-muted); }
+    .flag-val { font-family: monospace; color: var(--cyan); }
+
+    .alert-item {
+      border-left: 3px solid var(--orange);
+      padding: 0.4rem 0.6rem;
+      margin-bottom: 0.5rem;
+      font-size: 0.78rem;
+      background: var(--bg-hover);
+      border-radius: 0 6px 6px 0;
+    }
+    .alert-item .alert-rule { color: var(--orange); font-weight: 700; }
+    .alert-item .alert-output { color: var(--text-dim); margin-top: 0.2rem; word-break: break-all; }
+    .empty-hint { color: var(--text-muted); font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="../index.html">🐳 Escape Docker</a>
+  <div class="navbar-links">
+    <a href="../map.html">🗺️ Map</a>
+    <a href="index.html" class="active">🧪 Lab</a>
+  </div>
+</nav>
+
+<div class="page">
+  <h1>🧪 <span id="scenario-title">實驗執行紀錄</span></h1>
+  <div class="run-meta">
+    run id: <span id="run-id">—</span> ·
+    狀態：<span id="run-status">連線中…</span>
+  </div>
+
+  <div class="layout">
+    <div>
+      <div class="section-title">📜 執行步驟（即時）</div>
+      <div id="steps"><p class="empty-hint">等待第一個步驟…</p></div>
+
+      <div class="result-box" id="result-box">
+        <div class="result-row"><span class="label">status</span><span id="result-status"></span></div>
+        <div class="result-row"><span class="label">final_privilege</span><span id="result-privilege"></span></div>
+        <div class="result-row"><span class="label">flag_found</span><span class="flag-val" id="result-flag"></span></div>
+        <div class="result-row"><span class="label">duration_ms</span><span id="result-duration"></span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">🛡️ Falco 告警（即時）</div>
+      <div id="alerts"><p class="empty-hint">尚無告警</p></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/api.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const runId = params.get('id');
+document.getElementById('run-id').textContent = runId || '（缺少 ?id=）';
+
+const statusEl = document.getElementById('run-status');
+const stepsEl = document.getElementById('steps');
+const alertsEl = document.getElementById('alerts');
+const resultBox = document.getElementById('result-box');
+
+let stepsRendered = 0;
+let alertsRendered = 0;
+
+function setStatus(status) {
+  statusEl.textContent = status;
+  statusEl.className = `status-${status}`;
+}
+
+function addStep(step) {
+  if (stepsRendered === 0) stepsEl.innerHTML = '';
+  stepsRendered++;
+
+  const exitClass = step.exit_code === 0 ? 'step-exit-ok' : 'step-exit-bad';
+  const div = document.createElement('div');
+  div.className = 'step';
+  div.innerHTML = `
+    <div class="step-head">
+      <span class="step-name">#${step.index} ${step.name}</span>
+      <span class="${exitClass}">exit ${step.exit_code}</span>
+      <span class="step-duration">${step.duration_ms} ms</span>
+    </div>
+    <pre>${escapeHtml(step.output || '')}</pre>
+  `;
+  stepsEl.appendChild(div);
+}
+
+function addAlert(alert) {
+  if (alertsRendered === 0) alertsEl.innerHTML = '';
+  alertsRendered++;
+
+  const div = document.createElement('div');
+  div.className = 'alert-item';
+  div.innerHTML = `
+    <div class="alert-rule">${escapeHtml(alert.rule || '(unknown rule)')}</div>
+    <div class="alert-output">${escapeHtml(alert.output || '')}</div>
+  `;
+  alertsEl.prepend(div);
+}
+
+function setResult(result) {
+  setStatus(result.status);
+  document.getElementById('result-status').textContent = result.status;
+  document.getElementById('result-status').className = `status-${result.status}`;
+  document.getElementById('result-privilege').textContent = result.final_privilege || '—';
+  document.getElementById('result-flag').textContent = result.flag_found || '—';
+  document.getElementById('result-duration').textContent = result.duration_ms != null ? `${result.duration_ms} ms` : '—';
+  resultBox.classList.add('show');
+
+  if (result.scenario_id) {
+    document.getElementById('scenario-title').textContent = result.scenario_id;
+  }
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+if (runId) {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${protocol}//${location.host}/api/lab/runs/${encodeURIComponent(runId)}/stream`);
+
+  ws.addEventListener('message', (ev) => {
+    const msg = JSON.parse(ev.data);
+    switch (msg.type) {
+      case 'status': setStatus(msg.status); break;
+      case 'step': addStep(msg); break;
+      case 'result': setResult(msg); break;
+      case 'alert': addAlert(msg.alert); break;
+      case 'error':
+        setStatus('error');
+        toast(`連線錯誤：${msg.error}`, 'error');
+        break;
+    }
+  });
+
+  ws.addEventListener('close', () => {
+    if (!resultBox.classList.contains('show') && statusEl.textContent !== 'error') {
+      statusEl.textContent += '（連線已關閉）';
+    }
+  });
+
+  ws.addEventListener('error', () => {
+    toast('WebSocket 連線失敗', 'error');
+  });
+} else {
+  setStatus('error');
+}
+</script>
+</body>
+</html>

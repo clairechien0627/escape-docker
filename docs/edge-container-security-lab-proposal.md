@@ -213,16 +213,31 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
 
 ## 6. 階段規劃
 
-| 階段 | 內容 | 對應 RQ |
-|---|---|---|
-| Phase 0 | 場景定義（15 個 scenario JSON）+ 15 支攻擊自動化腳本（結構化輸出） | RQ1 基礎 |
-| Phase 1 | Falco 部署 + 規則設計（攻擊手法 ↔ 規則對照表） | RQ2 基礎 |
-| Phase 2 | lab-api 核心：執行引擎（ensure→reset→套用規則→執行腳本→蒐集告警→寫入結果→reset） | 平台核心 |
-| Phase 3 | 即時串流（WebSocket：攻擊輸出 + Falco 告警），`lab/run.html` 即時檢視 | 平台核心 |
-| Phase 4 | `lab/index.html` 控制台（場景選擇、執行設定、歷史列表） | 平台核心 |
-| Phase 5 | 對照實驗執行 + `lab/analytics.html`（偵測率/延遲矩陣、誤報率） | RQ2 |
-| Phase 6 | Raspberry Pi 節點部署 + 資源開銷實驗 + x86/Pi 對照圖表 | RQ3 |
-| Phase 7 | Hub 整合（Lab 為主模組、Story Mode 為附屬模組）+ 整合測試 + 報告 | 整合 |
+| 階段 | 內容 | 對應 RQ | 狀態 |
+|---|---|---|---|
+| Phase 0 | 場景定義（15 個 scenario JSON）+ 15 支攻擊自動化腳本（結構化輸出） | RQ1 基礎 | ✅ 已完成 |
+| Phase 1 | Falco 部署 + 規則設計（攻擊手法 ↔ 規則對照表） | RQ2 基礎 | ✅ 已完成 |
+| Phase 2 | lab-api 核心：執行引擎（ensure→reset→套用規則→執行腳本→蒐集告警→寫入結果→reset） | 平台核心 | ✅ 已完成 |
+| Phase 3 | 即時串流（WebSocket：攻擊輸出 + Falco 告警），`lab/run.html` 即時檢視 | 平台核心 | ✅ 已完成 |
+| Phase 4 | `lab/index.html` 控制台（場景選擇、執行設定、歷史列表） | 平台核心 | ✅ 已完成（基本版） |
+| Phase 5 | 對照實驗執行 + `lab/analytics.html`（偵測率/延遲矩陣、誤報率） | RQ2 | 未開始 |
+| Phase 6 | Raspberry Pi 節點部署 + 資源開銷實驗 + x86/Pi 對照圖表 | RQ3 | 未開始（委派給 Pi 負責的隊員） |
+| Phase 7 | Hub 整合（Lab 為主模組、Story Mode 為附屬模組）+ 整合測試 + 報告 | 整合 | 未開始 |
+
+> Phase 3/4 實作細節：
+> - `lab-api` 改為非同步執行模型（`POST /api/lab/runs` 立即回傳 `202`），
+>   並透過 `lib/run-manager.js`（EventEmitter）+ `lib/ws-stream.js` 提供
+>   `/api/lab/runs/:id/stream`（WebSocket）即時推送 `status`/`step`/
+>   `result`/`alert`/`error` 事件，細節見 `lab-api/README.md`
+> - `frontend/lab/index.html`：場景卡片 + 「▶ 執行」按鈕（沿用
+>   `admin.html` 的 admin-token 模式）+ 歷史執行列表（輪詢）
+> - `frontend/lab/run.html`：即時檢視頁，直接以原生 WebSocket 接上
+>   `/api/lab/runs/:id/stream`，左側即時步驟輸出、右側 Falco 告警
+>   feed；目前是「JSON 訊息渲染」而非重用 xterm.js 終端元件（攻擊腳本
+>   輸出本身是結構化 JSON Lines，不是互動式 shell session，渲染為
+>   結構化步驟卡片更適合）
+> - 已加入 Hub 各頁（`map.html`/`scoreboard.html`/`achievements.html`）
+>   的導覽列連結；`lab/analytics.html`（Phase 5）尚未建立
 
 ---
 

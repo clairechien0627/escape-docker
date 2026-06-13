@@ -1,7 +1,7 @@
 # lab-api
 
-Edge Container Security Lab 的執行引擎（Phase 2 核心），對應
-`docs/edge-container-security-lab-proposal.md` 第 5.2 節。與
+Edge Container Security Lab 的執行引擎（Phase 2 核心 + Phase 3 即時串流），
+對應 `docs/edge-container-security-lab-proposal.md` 第 5.2 節。與
 `room-manager` 同模式：Node.js + Express，透過 HTTP 呼叫 room-manager
 管理房間生命週期，並執行 `lab/exploits/*.sh` 取得結構化結果。
 
@@ -11,23 +11,42 @@ Edge Container Security Lab 的執行引擎（Phase 2 核心），對應
 |---|---|---|
 | `GET` | `/api/lab/scenarios` | 列出 15 個場景的中繼資料（精簡版） |
 | `GET` | `/api/lab/scenarios/:id` | 單一場景完整內容（含 `exploit_steps`、`falco_rule_refs` 等） |
-| `POST` | `/api/lab/runs` | 執行一次實驗：body `{ "scenario_id": "room2" }`，需 `x-admin-token` header |
+| `POST` | `/api/lab/runs` | **非同步**啟動一次實驗：body `{ "scenario_id": "room2" }`，需 `x-admin-token` header，立即回傳 `202` + run 物件（`status: "starting"`） |
 | `GET` | `/api/lab/runs` | 歷史執行列表（可用 `?scenario_id=` 篩選），由新到舊 |
-| `GET` | `/api/lab/runs/:id` | 單次執行詳情（含每個 step 的輸出） |
-| `POST` | `/api/lab/falco-webhook` | Falco `http_output` 的目標端點，記錄最近的告警 |
+| `GET` | `/api/lab/runs/:id` | 單次執行詳情（進行中回傳即時狀態，結束後回傳完整結果，含每個 step 的輸出） |
+| `GET` (WS) | `/api/lab/runs/:id/stream` | **Phase 3**：即時串流該次執行的 `status`/`step`/`result`/`alert`/`error` 事件（JSON，每則一行） |
+| `POST` | `/api/lab/falco-webhook` | Falco `http_output` 的目標端點，記錄最近的告警並轉發給目前執行中的 run |
 | `GET` | `/api/lab/alerts` | 查看最近收到的 Falco 告警（除錯用，記憶體內，重啟即清空） |
 
-## `POST /api/lab/runs` 流程
+## `POST /api/lab/runs` 流程（非同步，Phase 3）
+
+`POST /api/lab/runs` 立即回傳 `202` 與一筆 run 物件
+（`{ id, scenario_id, status: "starting", started_at, steps: [], ... }`），
+實際執行在背景進行：
 
 1. 呼叫 `room-manager` 的 `POST /rooms/:container/reset`
-   （`x-admin-token` = `ADMIN_TOKEN`），確保場景對應的房間在乾淨狀態
+   （`x-admin-token` = `ADMIN_TOKEN`），確保場景對應的房間在乾淨狀態；
+   完成後 run 狀態變為 `running`
 2. 以 `bash lab/exploits/<scenario_id>.sh` 執行攻擊腳本，逐行解析其
    JSON Lines 輸出（`{"type":"step",...}` / `{"type":"result",...}`，
-   見 `lab/exploits/lib/common.sh`）
+   見 `lab/exploits/lib/common.sh`），每個 step 解析完即透過
+   `/api/lab/runs/:id/stream` 即時轉發
 3. 執行完成後，再呼叫一次 `room-manager` 的 `reset`（best-effort，失敗
-   只記錄 log，不影響本次回應），讓房間回到乾淨狀態供下次實驗使用
-4. 將結果（`status`/`final_privilege`/`flag_found`/`duration_ms`/每個
-   step 的輸出）寫入 `data/runs.json` 並回傳
+   只記錄 log，不影響本次結果），讓房間回到乾淨狀態供下次實驗使用
+4. 將最終結果（`status`/`final_privilege`/`flag_found`/`duration_ms`/
+   每個 step 的輸出）寫入 `data/runs.json`，並透過 stream 送出
+   `{"type":"result",...}` 後關閉連線
+
+`GET /api/lab/runs/:id` 在執行中會回傳即時狀態（`status`/已完成的
+`steps`），結束後回傳與 `data/runs.json` 相同形狀的完整結果。
+
+### `/api/lab/runs/:id/stream`（WebSocket）
+
+連線後會先補送目前已知狀態：`{"type":"status","status":...}`，接著是
+已完成的每個 `{"type":"step",...}`；若該次執行已結束，緊接著送出
+`{"type":"result",...}` 並關閉連線。若仍在執行中，則持續推送後續的
+`step`/`result`/`alert`/`error` 事件，直到 `result`/`error` 出現後關閉。
+`alert` 事件來自 `/api/lab/falco-webhook`（見下方限制）。
 
 ## 環境變數
 

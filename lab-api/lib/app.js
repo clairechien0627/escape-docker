@@ -1,5 +1,4 @@
 const express = require('express');
-const path = require('path');
 
 const MAX_ALERTS = 500;
 
@@ -15,7 +14,13 @@ function toRunSummary(run) {
   return { id, scenario_id, started_at, finished_at, status, final_privilege, flag_found, duration_ms, exit_code };
 }
 
-function createApp({ scenarios, db, runExploit, roomManagerClient, adminToken, labDir }) {
+// 對外回傳「執行中」run 的精簡狀態（不含 emitter）
+function toRunSnapshot(run) {
+  const { emitter, ...snapshot } = run;
+  return snapshot;
+}
+
+function createApp({ scenarios, db, adminToken, runManager }) {
   const app = express();
   app.use(express.json());
 
@@ -40,44 +45,15 @@ function createApp({ scenarios, db, runExploit, roomManagerClient, adminToken, l
     res.json(scenario);
   });
 
-  // ── 執行實驗（room-manager reset -> 跑 exploit script -> reset）──
-  app.post('/api/lab/runs', requireAdmin, async (req, res) => {
+  // ── 執行實驗（非同步：立即回傳 run_id，背景跑 reset -> exploit -> reset）──
+  // Phase 3：前端可立即用回傳的 id 連線 /api/lab/runs/:id/stream 取得即時進度。
+  app.post('/api/lab/runs', requireAdmin, (req, res) => {
     const scenarioId = req.body && req.body.scenario_id;
     const scenario = scenarioById.get(scenarioId);
     if (!scenario) return res.status(404).json({ error: 'unknown scenario' });
 
-    const startedAt = new Date().toISOString();
-
-    try {
-      await roomManagerClient.reset(scenario.container);
-    } catch (err) {
-      return res.status(502).json({ error: `room-manager reset failed: ${err.message}` });
-    }
-
-    const scriptPath = path.join(labDir, scenario.exploit_script);
-    const { exitCode, timedOut, steps, result, stderr } = await runExploit(scriptPath);
-
-    // 跑完後盡力把房間重置回乾淨狀態，供下次實驗使用；失敗不影響本次結果回應
-    roomManagerClient.reset(scenario.container).catch((err) => {
-      console.error(`[lab-api] post-run reset of ${scenario.container} failed: ${err.message}`);
-    });
-
-    const run = {
-      id: `${scenarioId}-${Date.now()}`,
-      scenario_id: scenarioId,
-      started_at: startedAt,
-      finished_at: new Date().toISOString(),
-      exit_code: exitCode,
-      timed_out: timedOut,
-      status: result ? result.status : (timedOut ? 'timeout' : 'unknown'),
-      final_privilege: result ? result.final_privilege : null,
-      flag_found: result ? result.flag_found : null,
-      duration_ms: result ? result.duration_ms : null,
-      steps,
-      stderr: stderr || undefined,
-    };
-    db.insert(run);
-    res.status(201).json(run);
+    const run = runManager.startRun(scenarioId);
+    res.status(202).json(toRunSnapshot(run));
   });
 
   // ── 歷史結果 ──────────────────────────────────────────
@@ -85,18 +61,26 @@ function createApp({ scenarios, db, runExploit, roomManagerClient, adminToken, l
     res.json(db.list({ scenarioId: req.query.scenario_id }).map(toRunSummary));
   });
 
+  // 進行中的 run 從 runManager 取即時狀態；結束後（live.result 存在）或歷史
+  // run 則回傳完整結果記錄（與 db 內容相同的形狀）
   app.get('/api/lab/runs/:id', (req, res) => {
+    const live = runManager.get(req.params.id);
+    if (live) return res.json(live.result || toRunSnapshot(live));
+
     const run = db.get(req.params.id);
     if (!run) return res.status(404).json({ error: 'unknown run' });
     res.json(run);
   });
 
   // ── Falco webhook（falco.yaml 的 http_output 指向此處）──
-  // 目前先記錄在記憶體中供除錯查看；告警 <-> run 的關聯分析待後續階段
-  // （見 troubleshooting/falco-container-context-not-resolved.md 的限制）。
+  // 記錄在記憶體中供除錯查看，並轉發給目前執行中的 run（Phase 3 即時串流）；
+  // 告警 <-> run 的時間窗關聯仍有限制（見
+  // troubleshooting/falco-container-context-not-resolved.md）。
   app.post('/api/lab/falco-webhook', (req, res) => {
-    alerts.push({ received_at: new Date().toISOString(), alert: req.body });
+    const record = { received_at: new Date().toISOString(), alert: req.body };
+    alerts.push(record);
     if (alerts.length > MAX_ALERTS) alerts.shift();
+    runManager.notifyAlert(record);
     res.status(204).end();
   });
 

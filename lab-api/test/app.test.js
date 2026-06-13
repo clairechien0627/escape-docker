@@ -3,6 +3,7 @@ const assert = require('node:assert');
 const path = require('node:path');
 const request = require('supertest');
 const { createApp } = require('../lib/app');
+const { createRunManager } = require('../lib/run-manager');
 
 const SCENARIOS = [
   {
@@ -26,6 +27,9 @@ const SCENARIOS = [
     exploit_steps: ['...'],
   },
 ];
+
+const STEP = { type: 'step', index: 1, name: 'recon', exit_code: 0, duration_ms: 5, output: 'ok' };
+const RESULT = { type: 'result', scenario_id: 'room2', status: 'success', steps: 1, duration_ms: 10, final_privilege: 'root', flag_found: 'EscapeDocker{test}' };
 
 function fakeDb() {
   const runs = [];
@@ -54,31 +58,54 @@ function fakeRoomManagerClient(overrides = {}) {
   };
 }
 
+function fakeRunExploit({ steps = [STEP], result = RESULT } = {}) {
+  const calls = [];
+  return {
+    calls,
+    run: async (scriptPath, { onStep } = {}) => {
+      calls.push(scriptPath);
+      for (const step of steps) onStep(step);
+      return { exitCode: 0, timedOut: false, result, stderr: '' };
+    },
+  };
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
+// 由於 fake runExploit 通常同步完成，POST /api/lab/runs 回應時 run 可能已經
+// 結束（'result' 事件已在我們掛上 listener 前發出）。先檢查 run.result，
+// 避免對「已經發生過」的事件 .once() 造成測試卡死。
+function waitForResult(run) {
+  if (run.result) return Promise.resolve(run.result);
+  return new Promise((resolve) => run.emitter.once('result', resolve));
+}
+
 function buildApp(overrides = {}) {
   const db = overrides.db || fakeDb();
   const roomManagerClient = overrides.roomManagerClient || fakeRoomManagerClient();
-  const runExploitCalls = [];
-  const runExploit = overrides.runExploit || (async (scriptPath) => {
-    runExploitCalls.push(scriptPath);
-    return {
-      exitCode: 0,
-      timedOut: false,
-      steps: [{ type: 'step', index: 1, name: 'recon', exit_code: 0, duration_ms: 5, output: 'ok' }],
-      result: { type: 'result', scenario_id: 'room2', status: 'success', steps: 1, duration_ms: 10, final_privilege: 'root', flag_found: 'EscapeDocker{test}' },
-      stderr: '',
-    };
+  const fakeExploit = overrides.fakeExploit || fakeRunExploit();
+  const scenarioById = new Map(SCENARIOS.map((s) => [s.id, s]));
+
+  const runManager = overrides.runManager || createRunManager({
+    scenarioById,
+    db,
+    runExploit: fakeExploit.run,
+    roomManagerClient,
+    labDir: '/app/lab',
   });
 
   const app = createApp({
     scenarios: SCENARIOS,
     db,
-    runExploit,
-    roomManagerClient,
     adminToken: 'test-admin-token',
-    labDir: '/app/lab',
+    runManager,
   });
 
-  return { app, db, roomManagerClient, runExploitCalls };
+  return { app, db, roomManagerClient, fakeExploit, runManager };
 }
 
 test('GET /api/lab/scenarios returns summaries without exploit_steps', async () => {
@@ -110,13 +137,13 @@ test('GET /api/lab/scenarios/:id returns 404 for unknown scenario', async () => 
 });
 
 test('POST /api/lab/runs without admin token returns 401', async () => {
-  const { app, roomManagerClient, runExploitCalls } = buildApp();
+  const { app, roomManagerClient, fakeExploit } = buildApp();
 
   const res = await request(app).post('/api/lab/runs').send({ scenario_id: 'room2' });
 
   assert.strictEqual(res.status, 401);
   assert.deepStrictEqual(roomManagerClient.calls, []);
-  assert.deepStrictEqual(runExploitCalls, []);
+  assert.deepStrictEqual(fakeExploit.calls, []);
 });
 
 test('POST /api/lab/runs with unknown scenario_id returns 404', async () => {
@@ -130,40 +157,45 @@ test('POST /api/lab/runs with unknown scenario_id returns 404', async () => {
   assert.strictEqual(res.status, 404);
 });
 
-test('POST /api/lab/runs resets the room, runs the exploit script, resets again, and stores the result', async () => {
-  const { app, db, roomManagerClient, runExploitCalls } = buildApp();
+test('POST /api/lab/runs returns 202 immediately and the run finishes asynchronously', async () => {
+  const { app, db, roomManagerClient, fakeExploit, runManager } = buildApp();
 
   const res = await request(app)
     .post('/api/lab/runs')
     .set('x-admin-token', 'test-admin-token')
     .send({ scenario_id: 'room2' });
 
-  assert.strictEqual(res.status, 201);
-  assert.deepStrictEqual(roomManagerClient.calls, ['room2', 'room2']);
-  assert.deepStrictEqual(runExploitCalls, [path.join('/app/lab', 'exploits/room2.sh')]);
-
+  assert.strictEqual(res.status, 202);
   assert.strictEqual(res.body.scenario_id, 'room2');
-  assert.strictEqual(res.body.status, 'success');
-  assert.strictEqual(res.body.final_privilege, 'root');
-  assert.strictEqual(res.body.flag_found, 'EscapeDocker{test}');
-  assert.strictEqual(res.body.steps.length, 1);
+  assert.ok(['starting', 'running'].includes(res.body.status));
+  assert.strictEqual(res.body.emitter, undefined);
 
+  const run = runManager.get(res.body.id);
+  await waitForResult(run);
+
+  assert.deepStrictEqual(roomManagerClient.calls, ['room2', 'room2']);
+  assert.deepStrictEqual(fakeExploit.calls, [path.join('/app/lab', 'exploits/room2.sh')]);
   assert.strictEqual(db.runs.length, 1);
   assert.strictEqual(db.runs[0].id, res.body.id);
+  assert.strictEqual(db.runs[0].status, 'success');
 });
 
-test('POST /api/lab/runs returns 502 if the pre-run room-manager reset fails', async () => {
-  const roomManagerClient = fakeRoomManagerClient({ failOn: 'room2', failOnCall: 1 });
-  const { app, db, runExploitCalls } = buildApp({ roomManagerClient });
+test('GET /api/lab/runs/:id reflects live progress while running, then the stored result once finished', async () => {
+  const { app, runManager } = buildApp();
 
-  const res = await request(app)
+  const started = await request(app)
     .post('/api/lab/runs')
     .set('x-admin-token', 'test-admin-token')
     .send({ scenario_id: 'room2' });
 
-  assert.strictEqual(res.status, 502);
-  assert.deepStrictEqual(runExploitCalls, []);
-  assert.strictEqual(db.runs.length, 0);
+  const run = runManager.get(started.body.id);
+  await waitForResult(run);
+
+  const res = await request(app).get(`/api/lab/runs/${started.body.id}`);
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual(res.body.status, 'success');
+  assert.strictEqual(res.body.flag_found, 'EscapeDocker{test}');
+  assert.deepStrictEqual(res.body.steps, [STEP]);
 });
 
 test('GET /api/lab/runs lists run summaries newest-first, optionally filtered', async () => {
@@ -179,7 +211,7 @@ test('GET /api/lab/runs lists run summaries newest-first, optionally filtered', 
   assert.deepStrictEqual(filtered.body.map((r) => r.id), ['room2-1']);
 });
 
-test('GET /api/lab/runs/:id returns the full run, including steps', async () => {
+test('GET /api/lab/runs/:id returns the full historical run, including steps', async () => {
   const { app, db } = buildApp();
   db.insert({ id: 'room2-1', scenario_id: 'room2', status: 'success', steps: [{ index: 1 }] });
 
@@ -209,4 +241,38 @@ test('Falco webhook stores alerts, newest-first via GET /api/lab/alerts', async 
   assert.strictEqual(res.body.length, 2);
   assert.strictEqual(res.body[0].alert.rule, 'Docker Socket Accessed From Container');
   assert.strictEqual(res.body[1].alert.rule, 'Terminal shell in container');
+});
+
+test('Falco webhook forwards alerts to currently-running runs', async () => {
+  // 讓 exploit 卡在 gate 上，確保 run 在我們送出 webhook 時仍是 running
+  const gate = deferred();
+  const fakeExploit = {
+    calls: [],
+    run: async (scriptPath, { onStep } = {}) => {
+      fakeExploit.calls.push(scriptPath);
+      onStep(STEP);
+      await gate.promise;
+      return { exitCode: 0, timedOut: false, result: RESULT, stderr: '' };
+    },
+  };
+  const { app, runManager } = buildApp({ fakeExploit });
+
+  const started = await request(app)
+    .post('/api/lab/runs')
+    .set('x-admin-token', 'test-admin-token')
+    .send({ scenario_id: 'room2' });
+
+  const run = runManager.get(started.body.id);
+  assert.strictEqual(run.status, 'running');
+
+  const alerts = [];
+  run.emitter.on('alert', (a) => alerts.push(a));
+
+  await request(app).post('/api/lab/falco-webhook').send({ rule: 'Terminal shell in container' });
+
+  gate.resolve();
+  await waitForResult(run);
+
+  assert.strictEqual(alerts.length, 1);
+  assert.strictEqual(alerts[0].alert.rule, 'Terminal shell in container');
 });
