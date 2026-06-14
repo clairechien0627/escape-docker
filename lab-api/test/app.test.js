@@ -42,6 +42,7 @@ function fakeDb() {
       return out.slice().reverse();
     },
     get(id) { return runs.find((r) => r.id === id); },
+    clear() { runs.length = 0; },
   };
 }
 
@@ -195,6 +196,22 @@ test('GET /api/lab/runs lists run summaries newest-first, optionally filtered', 
 
   const filtered = await request(app).get('/api/lab/runs').query({ scenario_id: 'room2' });
   assert.deepStrictEqual(filtered.body.map((r) => r.id), ['room2-1']);
+});
+
+test('DELETE /api/lab/runs clears all historical runs (and the in-memory alert log)', async () => {
+  const { app, db } = buildApp();
+  db.insert({ id: 'room2-1', scenario_id: 'room2', status: 'success', steps: [] });
+  db.insert({ id: 'room3-1', scenario_id: 'room3', status: 'success', steps: [] });
+  await request(app).post('/api/lab/falco-webhook').send({ rule: 'Sudo Exec Of Backup Script' });
+
+  const del = await request(app).delete('/api/lab/runs');
+  assert.strictEqual(del.status, 204);
+
+  const runs = await request(app).get('/api/lab/runs');
+  assert.deepStrictEqual(runs.body, []);
+
+  const alerts = await request(app).get('/api/lab/alerts');
+  assert.deepStrictEqual(alerts.body, []);
 });
 
 test('GET /api/lab/runs/:id returns the full historical run, including steps', async () => {

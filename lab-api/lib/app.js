@@ -120,6 +120,15 @@ function createApp({ scenarios, db, runManager }) {
     res.json(db.list({ scenarioId: req.query.scenario_id }).map(toRunSummary));
   });
 
+  // 清除所有歷史執行紀錄（供 analytics.html「清除歷史記錄」使用，例如在
+  // Falco 規則或偵測機制有重大修正後，避免舊資料污染 detection-matrix 統計）。
+  // 進行中的 run（runManager 記憶體內）不受影響，僅清空已寫入 db 的歷史。
+  app.delete('/api/lab/runs', (req, res) => {
+    db.clear();
+    alerts.length = 0;
+    res.status(204).end();
+  });
+
   // 進行中的 run 從 runManager 取即時狀態；結束後（live.result 存在）或歷史
   // run 則回傳完整結果記錄（與 db 內容相同的形狀）
   app.get('/api/lab/runs/:id', (req, res) => {
