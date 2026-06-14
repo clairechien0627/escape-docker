@@ -72,7 +72,7 @@
 
 <div class="page">
   <h1>📈 偵測率 / 誤報率分析</h1>
-  <p class="subtitle">彙整 15 個場景的歷史執行結果：成功率、FLAG 取得率、平均耗時，以及 Falco 偵測率（RQ2）。</p>
+  <p class="subtitle">彙整 15 個場景的歷史執行結果：成功率、FLAG 取得率、平均耗時、Falco 偵測率與規則覆蓋率（RQ2）。</p>
 
   <div class="summary-row" id="summary-row" style="display:none">
     <div class="summary-card">
@@ -91,18 +91,33 @@
       <div class="summary-num" id="sum-detection-rate">—</div>
       <div class="summary-label">平均 Falco 偵測率</div>
     </div>
+    <div class="summary-card">
+      <div class="summary-num" id="sum-rule-coverage">—</div>
+      <div class="summary-label">平均規則覆蓋率</div>
+    </div>
   </div>
 
   <div class="note-box">
-    <strong>關於「Falco 偵測率」的解讀：</strong>
-    偵測率代表「該次執行期間，lab-api 是否收到至少一筆來自 Falco 的告警」
-    （透過 <code>/api/lab/falco-webhook</code> 即時轉發）。在目前的開發環境
-    （Docker Desktop + WSL2 + modern eBPF）下，<code>docker exec</code>
-    產生的短命子行程多數無法被 Falco 正確解析出
-    <code>container.id</code>，導致依賴
-    <code>container.id != host</code> 的規則大多不會觸發——因此偵測率
-    偏低或為 0 本身也是 RQ2 的一項觀察結果，不代表平台故障。詳見
-    <code>troubleshooting/falco-container-context-not-resolved.md</code>。
+    <strong>關於「Falco 偵測率」與「規則覆蓋率」的解讀：</strong>
+    <strong>偵測率</strong>代表「該次執行期間，lab-api 是否收到至少一筆來自
+    Falco 的告警」（透過 <code>/api/lab/falco-webhook</code> 即時轉發）。
+    <strong>規則覆蓋率</strong>則是更細緻的指標：該場景
+    <code>falco_rule_refs</code> 中，有對應且已啟用的 Falco 規則
+    （見 <code>falco/README.md</code> 第 2 節對照表），曾在任一次執行中被
+    實際命中的比例；滑鼠移到長條上可看到已觸發的規則名稱。<code>—</code>
+    代表該場景沒有對應的可量測規則，或尚未執行過。<br><br>
+    2026-06-14：把 <code>escape-falco</code> 接進常駐 stack 後，先前記錄
+    「container context 解析不到、規則不會觸發」的案例（room6 的
+    <code>Docker Socket Accessed From Container</code>、
+    <code>Unexpected Child Process In Container Via Docker Exec</code>，
+    secret-b 的 <code>Docker Save Or History Executed</code> 等）已能正確
+    觸發，詳見
+    <code>troubleshooting/falco-container-context-not-resolved.md</code>
+    第 8 節與 <code>falco/README.md</code> 第 4.6 節。殘留限制：因
+    <code>container.name</code>/<code>container.id</code> 在告警輸出中仍為
+    <code>null</code>，<code>run.alerts</code> 以時間窗口（而非
+    container）關聯，規則覆蓋率的「已觸發規則」可能包含同一時段其他房間
+    /host 程序產生的雜訊規則。
   </div>
 
   <div class="card">
@@ -116,11 +131,12 @@
           <th>FLAG 取得率</th>
           <th>平均耗時</th>
           <th>Falco 偵測率</th>
+          <th>規則覆蓋率</th>
           <th>最後執行</th>
         </tr>
       </thead>
       <tbody>
-        <tr><td colspan="8" class="text-dim">載入中…</td></tr>
+        <tr><td colspan="9" class="text-dim">載入中…</td></tr>
       </tbody>
     </table>
   </div>
@@ -135,6 +151,21 @@ function rateCell(rate) {
   const cls = pct >= 70 ? 'good' : pct >= 30 ? 'mid' : 'bad';
   return `
     <div class="rate-cell">
+      <div class="rate-bar"><div class="rate-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="rate-text">${pct}%</div>
+    </div>
+  `;
+}
+
+function ruleCoverageCell(m) {
+  if (m.rule_coverage == null) {
+    return '<span class="dim-cell" title="此場景沒有對應且已啟用的 Falco 規則，或尚未執行過">—</span>';
+  }
+  const pct = Math.round(m.rule_coverage * 100);
+  const cls = pct >= 70 ? 'good' : pct >= 30 ? 'mid' : 'bad';
+  const list = m.triggered_rules.length ? `已觸發：${m.triggered_rules.join('、')}` : '尚未觀察到對應規則觸發';
+  return `
+    <div class="rate-cell" title="${list}">
       <div class="rate-bar"><div class="rate-fill ${cls}" style="width:${pct}%"></div></div>
       <div class="rate-text">${pct}%</div>
     </div>
@@ -159,12 +190,17 @@ async function loadAnalytics() {
     const avgDetection = ranScenarios.length
       ? ranScenarios.reduce((sum, m) => sum + m.detection_rate, 0) / ranScenarios.length
       : null;
+    const coverableScenarios = matrix.filter((m) => m.rule_coverage != null);
+    const avgRuleCoverage = coverableScenarios.length
+      ? coverableScenarios.reduce((sum, m) => sum + m.rule_coverage, 0) / coverableScenarios.length
+      : null;
 
     document.getElementById('summary-row').style.display = 'flex';
     document.getElementById('sum-total-runs').textContent = totalRuns;
     document.getElementById('sum-scenarios-run').textContent = `${ranScenarios.length} / ${matrix.length}`;
     document.getElementById('sum-success-rate').textContent = avgSuccess != null ? `${Math.round(avgSuccess * 100)}%` : '—';
     document.getElementById('sum-detection-rate').textContent = avgDetection != null ? `${Math.round(avgDetection * 100)}%` : '—';
+    document.getElementById('sum-rule-coverage').textContent = avgRuleCoverage != null ? `${Math.round(avgRuleCoverage * 100)}%` : '—';
 
     tbody.innerHTML = matrix.map((m) => `
       <tr>
@@ -178,11 +214,12 @@ async function loadAnalytics() {
         <td>${rateCell(m.flag_rate)}</td>
         <td class="num-cell ${m.avg_duration_ms == null ? 'dim-cell' : ''}">${m.avg_duration_ms != null ? m.avg_duration_ms + ' ms' : '—'}</td>
         <td>${rateCell(m.detection_rate)}</td>
+        <td>${ruleCoverageCell(m)}</td>
         <td style="font-size:0.74rem">${formatTime(m.last_run_at)}</td>
       </tr>
     `).join('');
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="8" class="text-red">載入失敗：${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="text-red">載入失敗：${e.message}</td></tr>`;
   }
 }
 

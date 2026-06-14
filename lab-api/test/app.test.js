@@ -247,6 +247,10 @@ test('GET /api/lab/analytics/detection-matrix aggregates per-scenario stats, inc
   assert.strictEqual(room2.flag_rate, 0.5);
   assert.strictEqual(room2.avg_duration_ms, 1500);
   assert.strictEqual(room2.detection_rate, 0.5);
+  // 'r1' 不是 sudo_exec_backup_script 對應的 Falco 規則名稱
+  // （Sudo Exec Of Backup Script），所以沒有命中
+  assert.strictEqual(room2.rule_coverage, 0);
+  assert.deepStrictEqual(room2.triggered_rules, []);
   assert.strictEqual(room2.last_run_at, '2026-06-13T16:22:20.755Z');
 
   const room3 = res.body.find((r) => r.scenario_id === 'room3');
@@ -255,7 +259,60 @@ test('GET /api/lab/analytics/detection-matrix aggregates per-scenario stats, inc
   assert.strictEqual(room3.flag_rate, null);
   assert.strictEqual(room3.avg_duration_ms, null);
   assert.strictEqual(room3.detection_rate, null);
+  // falco_rule_refs 為空，無可量測規則 -> rule_coverage 恆為 null
+  assert.strictEqual(room3.rule_coverage, null);
+  assert.deepStrictEqual(room3.triggered_rules, []);
   assert.strictEqual(room3.last_run_at, null);
+});
+
+test('GET /api/lab/analytics/detection-matrix computes rule_coverage from matched falco_rule_refs', async () => {
+  const { app, db } = buildApp();
+
+  // sudo_exec_backup_script -> "Sudo Exec Of Backup Script"（room2 唯一的
+  // falco_rule_refs），實際命中時 rule_coverage 應為 1
+  db.insert({
+    id: 'room2-1',
+    scenario_id: 'room2',
+    status: 'success',
+    flag_found: 'EscapeDocker{a}',
+    duration_ms: 1000,
+    alerts: [
+      { alert: { rule: 'DAC Read Search Capability Used' } },
+      { alert: { rule: 'Sudo Exec Of Backup Script' } },
+    ],
+    finished_at: '2026-06-14T09:06:09.839Z',
+  });
+
+  const res = await request(app).get('/api/lab/analytics/detection-matrix');
+
+  const room2 = res.body.find((r) => r.scenario_id === 'room2');
+  assert.strictEqual(room2.detection_rate, 1);
+  assert.strictEqual(room2.rule_coverage, 1);
+  assert.deepStrictEqual(room2.triggered_rules, ['Sudo Exec Of Backup Script']);
+});
+
+test('GET /api/lab/analytics/detection-matrix prefers alert_rule_counts over the (capped) alerts array', async () => {
+  const { app, db } = buildApp();
+
+  // alerts 被 MAX_RUN_ALERTS 截斷，不包含 'Sudo Exec Of Backup Script'，
+  // 但 alert_rule_counts 仍記錄了完整的規則計數
+  db.insert({
+    id: 'room2-1',
+    scenario_id: 'room2',
+    status: 'success',
+    flag_found: 'EscapeDocker{a}',
+    duration_ms: 1000,
+    alerts: [{ alert: { rule: 'DAC Read Search Capability Used' } }],
+    alert_rule_counts: { 'DAC Read Search Capability Used': 1, 'Sudo Exec Of Backup Script': 1 },
+    finished_at: '2026-06-14T09:06:09.839Z',
+  });
+
+  const res = await request(app).get('/api/lab/analytics/detection-matrix');
+
+  const room2 = res.body.find((r) => r.scenario_id === 'room2');
+  assert.strictEqual(room2.detection_rate, 1);
+  assert.strictEqual(room2.rule_coverage, 1);
+  assert.deepStrictEqual(room2.triggered_rules, ['Sudo Exec Of Backup Script']);
 });
 
 test('GET /api/lab/analytics/detection-matrix treats runs without an alerts field as not detected', async () => {
@@ -301,4 +358,39 @@ test('Falco webhook forwards alerts to currently-running runs', async () => {
 
   assert.strictEqual(alerts.length, 1);
   assert.strictEqual(alerts[0].alert.rule, 'Terminal shell in container');
+});
+
+test('run.alerts is capped but alert_rule_counts tracks the full tally (strace ground-truth pilot can flood Falco with Ptrace alerts)', async () => {
+  // 讓 exploit 卡在 gate 上，確保 run 在我們灌入大量 webhook 時仍是 running
+  const gate = deferred();
+  const fakeExploit = {
+    calls: [],
+    run: async (scriptPath, { onStep } = {}) => {
+      fakeExploit.calls.push(scriptPath);
+      onStep(STEP);
+      await gate.promise;
+      return { exitCode: 0, timedOut: false, result: RESULT, stderr: '' };
+    },
+  };
+  const { app, db, runManager } = buildApp({ fakeExploit });
+
+  const started = await request(app)
+    .post('/api/lab/runs')
+    .send({ scenario_id: 'room2' });
+
+  const run = runManager.get(started.body.id);
+
+  // 模擬 step_traced 觸發的 Ptrace 告警洪水（遠超過 MAX_RUN_ALERTS=200）
+  for (let i = 0; i < 250; i++) {
+    await request(app).post('/api/lab/falco-webhook').send({ rule: 'Ptrace Attach To Other Process' });
+  }
+  await request(app).post('/api/lab/falco-webhook').send({ rule: 'Docker Socket Accessed From Container' });
+
+  gate.resolve();
+  await waitForResult(run);
+
+  const stored = db.runs.find((r) => r.id === started.body.id);
+  assert.ok(stored.alerts.length <= 200);
+  assert.strictEqual(stored.alert_rule_counts['Ptrace Attach To Other Process'], 250);
+  assert.strictEqual(stored.alert_rule_counts['Docker Socket Accessed From Container'], 1);
 });

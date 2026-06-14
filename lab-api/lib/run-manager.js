@@ -1,6 +1,13 @@
 const path = require('path');
 const { EventEmitter } = require('events');
 
+// run.alerts（連同最終結果寫入 data/runs.json）的上限。strace ground-truth
+// 試驗（step_traced，見 troubleshooting/strace-ground-truth-pilot.md）會讓
+// 受追蹤行程觸發大量 Falco「Ptrace Attach To Other Process」等告警
+// （單次 run 可達數千筆），若不設上限會讓 data/runs.json 暴增到數 MB。
+// 完整的告警規則統計改存在不受此上限影響的 alert_rule_counts。
+const MAX_RUN_ALERTS = 200;
+
 // 管理「執行中」的實驗（Phase 3：即時串流）。
 //
 // startRun() 立刻回傳一筆 run 記錄並在背景非同步執行
@@ -28,6 +35,7 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
       finished_at: null,
       steps: [],
       alerts: [],
+      alert_rule_counts: {},
       result: null,
       error: null,
       emitter,
@@ -67,6 +75,7 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
           duration_ms: result ? result.duration_ms : null,
           steps: run.steps,
           alerts: run.alerts,
+          alert_rule_counts: run.alert_rule_counts,
           stderr: stderr || undefined,
         };
 
@@ -98,8 +107,14 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
   function notifyAlert(alertRecord) {
     for (const run of runs.values()) {
       if (run.status === 'starting' || run.status === 'running') {
-        run.alerts.push(alertRecord);
-        run.emitter.emit('alert', { type: 'alert', ...alertRecord });
+        const ruleName = alertRecord.alert && alertRecord.alert.rule;
+        if (ruleName) {
+          run.alert_rule_counts[ruleName] = (run.alert_rule_counts[ruleName] || 0) + 1;
+        }
+        if (run.alerts.length < MAX_RUN_ALERTS) {
+          run.alerts.push(alertRecord);
+          run.emitter.emit('alert', { type: 'alert', ...alertRecord });
+        }
       }
     }
   }

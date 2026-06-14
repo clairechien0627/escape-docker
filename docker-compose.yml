@@ -104,6 +104,30 @@ services:
       - room-manager
     restart: unless-stopped
 
+  # ──────────────── Falco（容器執行期安全監控，Edge Container Security Lab）────────────────
+  falco:
+    image: falcosecurity/falco-no-driver:latest
+    container_name: escape-falco
+    privileged: true
+    pid: host
+    restart: unless-stopped
+    command:
+      - /usr/bin/falco
+      - -c
+      - /etc/falco/falco.yaml
+    volumes:
+      - ./falco/falco.yaml:/etc/falco/falco.yaml:ro
+      - ./falco/rules/lab_rules.yaml:/etc/falco/lab_rules.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /etc:/host/etc:ro
+      - /dev:/host/dev:ro
+      - /sys:/host/sys:ro
+    environment:
+      - HOST_ROOT=/host
+    networks:
+      - game_net
+
   # ══════════════ Chapter 1：The Awakening ══════════════
 
   room0:

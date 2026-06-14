@@ -35,3 +35,5 @@
 ## 2026-06-14
 
 - [lab-admin-token-lockout.md](lab-admin-token-lockout.md) — Lab「▶ 執行」需要 Admin Token，輸入錯誤後 localStorage 永久快取、無法重試；移除該驗證（設計上 Lab 即為開放實驗平台）
+- [falco-container-context-not-resolved.md](falco-container-context-not-resolved.md)（第 8 節更新） — 把 `escape-falco` 接進常駐 stack 後重測，先前記錄「不會觸發」的規則（`Docker Socket Accessed From Container`、`Unexpected Child Process In Container Via Docker Exec`、`Docker Save Or History Executed`）實測全部正確觸發，根因是「Falco 啟動時機」而非 `docker exec` 短命子行程的固有限制
+- [strace-ground-truth-pilot.md](strace-ground-truth-pilot.md) — Phase B：room2 用 strace 包裝會讓 `sudo` 喪失 setuid 提權效果（kernel 安全機制），改以 room6 為 pilot 取得 ground truth；過程中發現 strace 自身的 ptrace 操作會讓 Falco 觸發數千筆 `Ptrace Attach To Other Process` 告警，撐爆 `data/runs.json`（6.1MB），修復為 `alert_rule_counts` + `MAX_RUN_ALERTS` 上限

@@ -242,17 +242,37 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
 > Phase 5/7 實作細節：
 > - 後端新增 `GET /api/lab/analytics/detection-matrix`：依場景彙整
 >   `data/runs.json` 的歷史執行記錄（執行次數、成功率、FLAG 取得率、
->   平均耗時、Falco 偵測率），即使尚無任何 run 的場景也會列出
->   （供前端呈現完整 15 列）。`run-manager.js` 同步新增
->   `run.alerts`：每次 run 在背景執行期間收到的 Falco 告警會記錄下來
->   並隨最終結果寫入 db，作為「偵測率」的資料來源
+>   平均耗時、Falco 偵測率、規則覆蓋率 `rule_coverage`），即使尚無任何
+>   run 的場景也會列出（供前端呈現完整 15 列）。`run-manager.js` 同步
+>   新增 `run.alerts`：每次 run 在背景執行期間收到的 Falco 告警會記錄
+>   下來並隨最終結果寫入 db，作為「偵測率」與「規則覆蓋率」的資料來源
 > - `frontend/lab/analytics.html`：15 場景的彙整表格（含成功率/FLAG
->   取得率/平均耗時/Falco 偵測率的長條視覺化），並說明目前偵測率偏低
->   是 `falco-container-context-not-resolved` 限制下的預期結果，而非
->   平台錯誤——此觀察本身即為 RQ2 的一項結論
+>   取得率/平均耗時/Falco 偵測率/規則覆蓋率的長條視覺化）
+> - **2026-06-14 更新**：`escape-falco` 已從「僅供參考的
+>   `docker-compose.falco.example.yml`」正式合併進主 `docker-compose.yml`
+>   常駐運行。實測顯示，先前記錄為「container context 解析不到、規則
+>   不會觸發」的案例（`Docker Socket Accessed From Container`、
+>   `Unexpected Child Process In Container Via Docker Exec`、
+>   `Docker Save Or History Executed` 等）在 Falco 常駐 + room-manager
+>   reset 重建 container 後已能正確觸發，detection_rate/rule_coverage
+>   由全 0 變為非零，使 RQ2 的偵測率數據真正有意義；詳見
+>   `troubleshooting/falco-container-context-not-resolved.md` 第 8 節與
+>   `falco/README.md` 第 4.6 節。殘留限制（`container.name` 仍為
+>   `null`、`run.alerts` 以時間窗口而非 container 關聯）見上述文件
 > - Phase 7（部分）：`frontend/index.html` 首頁新增「🧪 Security Lab」
 >   CTA 按鈕與簡短的 Lab 模組介紹區塊，作為 Story Mode 之外的第二入口；
 >   尚未進行「Lab 為主模組」的完整版面重排與整合測試/報告
+> - **2026-06-14 新增（RQ2 第二種偵測機制對照，pilot）**：在 `room6`
+>   試行 `step_traced`——以 `strace -f` 包裝 exploit 指令，取得
+>   `execve`/`openat`/`connect` 的 ground truth（不依賴規則），併入
+>   `step` JSON 的 `trace` 欄位並於 `run.html` 與 Falco 告警並列顯示。
+>   過程中發現兩個重要限制：① `room2` 的 `sudo` 提權在 `strace -f` 下
+>   因 kernel 的 ptrace/setuid 安全機制失效，結構性不適用；
+>   ② `strace` 自身的 ptrace 操作會讓 Falco 觸發數千筆
+>   `Ptrace Attach To Other Process` 告警（單次 run 達 8857 筆），需以
+>   `alert_rule_counts` + `MAX_RUN_ALERTS` 上限避免 `data/runs.json`
+>   暴增。15 場景全面推廣列為未來工作，詳見
+>   `troubleshooting/strace-ground-truth-pilot.md`
 
 ---
 

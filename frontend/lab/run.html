@@ -45,6 +45,18 @@
       overflow-y: auto;
     }
 
+    .step-trace {
+      margin-top: 0.5rem;
+      font-size: 0.74rem;
+      color: var(--text-muted);
+    }
+    .step-trace summary {
+      cursor: pointer;
+      color: var(--cyan);
+    }
+    .step-trace ul { margin: 0.3rem 0 0 1.1rem; padding: 0; }
+    .step-trace li { font-family: var(--font-mono); word-break: break-all; }
+
     .result-box {
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -129,6 +141,28 @@ function setStatus(status) {
   statusEl.className = `status-${status}`;
 }
 
+function traceSection(trace) {
+  if (!trace) return '';
+  const groups = [
+    ['執行的程式（execve）', trace.execs],
+    ['開啟的檔案（openat）', trace.files],
+    ['建立的連線（connect）', trace.connects],
+  ].filter(([, items]) => items && items.length);
+  if (!groups.length) return '';
+
+  const body = groups.map(([label, items]) => `
+    <div><strong>${label}</strong></div>
+    <ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
+  `).join('');
+
+  return `
+    <details class="step-trace">
+      <summary>🔬 strace ground truth（與右側 Falco 告警對照）</summary>
+      ${body}
+    </details>
+  `;
+}
+
 function addStep(step) {
   if (stepsRendered === 0) stepsEl.innerHTML = '';
   stepsRendered++;
@@ -143,6 +177,7 @@ function addStep(step) {
       <span class="step-duration">${step.duration_ms} ms</span>
     </div>
     <pre>${escapeHtml(step.output || '')}</pre>
+    ${traceSection(step.trace)}
   `;
   stepsEl.appendChild(div);
 }

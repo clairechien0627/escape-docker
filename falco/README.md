@@ -144,15 +144,15 @@ syscall，這是 Falco 的標準部署方式（Falco 本身不會修改其他容
 
 `falco.yaml` 設定 `http_output` 指向
 `http://lab-api:4100/api/lab/falco-webhook`。`lab-api`（見
-`lab-api/README.md`）已實作此端點，目前僅將收到的告警存進記憶體
-（`GET /api/lab/alerts` 可查看最近 500 筆，供除錯）；告警與 exploit
-run 的時間關聯分析待後續階段，且如第 4.3 節所述，目前環境下大部分
-`docker exec` 短命子行程的告警 `container.id` 解析不到，這個關聯分析
-在問題解決前效用有限。同時保留 `stdout_output` 方便部署初期直接看 log
-除錯（`docker compose logs -f falco`）。`escape-falco` 不在主
-`docker-compose.yml` 內常駐（見 `docker-compose.falco.example.yml`），
-若 `escape-falco` 未啟動，`http_output` 連線失敗不影響 Falco 本身運作，
-只是告警不會被轉發。
+`lab-api/README.md`）已實作此端點，將收到的告警存進記憶體
+（`GET /api/lab/alerts` 可查看最近 500 筆，供除錯），並依「`POST
+/api/lab/runs` 的 `[started_at, finished_at]` 時間窗口」附加到對應 run 的
+`alerts` 欄位（`/api/lab/analytics/detection-matrix` 用此計算
+`detection_rate`/`rule_coverage`，見第 4.6 節）。同時保留
+`stdout_output` 方便直接看 log 除錯（`docker compose logs -f falco`）。
+`escape-falco` 已合併進主 `docker-compose.yml` 常駐運行（2026-06-14，
+取代原本僅供參考的 `docker-compose.falco.example.yml`）；若該容器未啟動，
+`http_output` 連線失敗不影響 Falco 本身運作，只是告警不會被轉發。
 
 ## 4. Smoke Test 結果記錄（2026-06-13）
 
@@ -255,3 +255,65 @@ Docker Desktop 內部程序（`runc`、`containerd-shim`、`docker-init`、
      可能不同，待硬體到手後重跑本 smoke test 驗證。
   3. `Unexpected Child Process In Container Via Docker Exec` 的
      `not proc.name in (bash, sh)` 排除條件建議在未來修訂規則時一併檢討。
+
+## 4.6 2026-06-14 重測結果：把 `escape-falco` 接進常駐 stack 後，問題大幅緩解
+
+依 4.5 的建議方向①，把 `escape-falco` 合併進主 `docker-compose.yml` 常駐
+運行（不再是 smoke test 時才手動啟動的臨時容器），再透過 Lab 前端對
+`room2`、`room6`、`secret-b` 各執行一次完整實驗（`POST /api/lab/runs`
+會先呼叫 room-manager `reset` 重建房間 container）：
+
+- **4.3 表中記錄「未觸發」的規則，本次全部正確觸發**：`Docker Socket
+  Accessed From Container`（room6）、`Unexpected Child Process In
+  Container Via Docker Exec`（room6）、`Docker Save Or History
+  Executed`（secret-b）。
+- room2 的 `falco_rule_refs` 對應規則（`Sudo Exec Of Backup Script`、
+  `Root Read Of Secret File Via Spawned Process`、`DAC Read Search
+  Capability Used`）也全部觸發。
+- `container.name` 仍顯示 `null`，但不影響規則觸發（規則 condition 只用
+  到 `container` macro，即 `container.id != host`；`container.id` 本身
+  已能正確解析，只是 `container.name` 的名稱對照仍失敗）。
+
+**根因修正**：4.3 的「`docker exec` 短命子行程 container context 大多
+解析不到」並非 Docker Desktop/WSL2 + modern eBPF 的固有限制，而是因為
+2026-06-13 smoke test 時 Falco 是在 room6/secret-b 等 container **已存在
+一段時間後**才手動啟動的，沒能捕捉到 container 的 CREATE 事件以建立
+enrichment 對照表。Falco **常駐運行 + container 透過 reset 重建**時，
+enrichment 正常運作。
+
+**對 A1（規則條件修正）的結論**：`falco/rules/lab_rules.yaml` 的規則
+condition **不需修改**——27 條規則的 `container and` guard 與
+`Unexpected Child Process In Container Via Docker Exec` 的
+`not proc.name in (bash, sh)` 排除條件，在「Falco 常駐 + reset 重建
+container」下都已正確運作。詳細記錄見
+[`troubleshooting/falco-container-context-not-resolved.md`](../troubleshooting/falco-container-context-not-resolved.md)
+第 8 節。
+
+**已知殘留限制**：因 `container.name`/`container.id` 在 alert output 中
+仍為 `null`/`<NA>`，lab-api 無法依「告警屬於哪個 container」過濾，
+`run.alerts` 仍是用時間窗口涵蓋當時所有告警（含其他房間/host 程序的
+背景雜訊，例如 `DAC Read Search Capability Used`）。這對
+`rule_coverage`（只看「該規則是否曾觸發過」）影響有限，但
+`triggered_rules` 列表會包含與該場景無關的雜訊規則，前端展示時需註明。
+
+## 4.7 2026-06-14：`Ptrace` 規則被 strace ground-truth pilot 大量觸發
+
+RQ2 的第二種偵測機制對照（pilot，見
+[`troubleshooting/strace-ground-truth-pilot.md`](../troubleshooting/strace-ground-truth-pilot.md)）
+在 `room6` 用 `strace -f` 包裝 exploit 指令以取得 `execve`/`openat`/
+`connect` ground truth。實測發現 `strace -f` 自身對受追蹤行程持續發出
+`PTRACE_*` 操作，使 `lab_rules.yaml` 既有的
+`Ptrace Attach To Other Process`／`PTRACE attached to process`／
+`PTRACE anti-debug attempt` 三條規則被大量觸發——單次 room6 run（4 個
+追蹤步驟）即觸發 `Ptrace Attach To Other Process` **8857 次**，遠超其他
+規則的觸發次數（個位數~數十）。
+
+這對 `rule_coverage`/`triggered_rules` 本身沒有負面影響（仍只看「是否
+觸發過」），但若直接把每筆告警存進 `run.alerts`，會讓
+`data/runs.json` 暴增（單次 run 6.1MB）。修復方式是 `lab-api` 新增
+`alert_rule_counts`（依規則名稱計數，無上限）與 `MAX_RUN_ALERTS=200`
+（`run.alerts` 上限），detection-matrix 改用前者計算
+`triggered_rules`。**這也是 RQ2 的一個發現**：規則式 IDS 對「自我
+追蹤/除錯工具」與「真正的攻擊性 ptrace 注入」缺乏區分能力，自我
+可觀測性手段（strace）與規則式偵測（Falco）並存時會互相產生大量
+噪音。詳見 `troubleshooting/strace-ground-truth-pilot.md`。
