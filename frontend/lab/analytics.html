@@ -177,15 +177,18 @@
 
   <div class="section-title">📊 RQ2 對照：規則覆蓋率 vs 誤報率</div>
   <p class="subtitle" style="margin-bottom: 0.75rem;">
-    每個點代表一個場景：橫軸為「規則覆蓋率」（exploit 執行期間命中對應 Falco
-    規則的比例，越右越好），縱軸為「誤報率」（Baseline 靜置期間同一批規則
-    誤觸發的比例，越低越好）。理想的場景應落在<strong>右下角</strong>
-    （高覆蓋率、低誤報率）。只有跑過 Baseline 的場景才會顯示在圖上。
+    每個場景一列，並排顯示兩個百分比：<strong>規則覆蓋率</strong>
+    （exploit 執行期間命中對應 Falco 規則的比例，越高越好）與
+    <strong>誤報率</strong>（Baseline 靜置期間同一批規則誤觸發的比例，
+    越低越好）。理想場景是綠色長條長、橘色長條短。沒有對應資料的場景
+    （尚未執行 / 尚未跑過 Baseline）該長條留空。
   </p>
   <div class="card">
-    <canvas id="rq2-chart" height="280"></canvas>
+    <div style="position: relative; height: 480px;">
+      <canvas id="rq2-chart"></canvas>
+    </div>
     <div class="dim-cell" id="rq2-chart-empty" style="margin-top: 0.5rem; font-size: 0.8rem; display: none;">
-      尚無資料：請至「🧪 Lab」頁面對場景執行「🔬 Baseline (20s)」後再回來查看。
+      尚無資料：請至「🧪 Lab」頁面執行場景或 Baseline 後再回來查看。
     </div>
   </div>
 
@@ -283,15 +286,9 @@ let rq2Chart = null;
 function renderRQ2Chart(matrix) {
   const canvas = document.getElementById('rq2-chart');
   const empty = document.getElementById('rq2-chart-empty');
-  const points = matrix
-    .filter((m) => m.rule_coverage != null && m.false_positive_rate != null)
-    .map((m) => ({
-      x: Math.round(m.rule_coverage * 100),
-      y: Math.round(m.false_positive_rate * 100),
-      label: m.scenario_id,
-    }));
 
-  if (points.length === 0) {
+  const hasAnyData = matrix.some((m) => m.rule_coverage != null || m.false_positive_rate != null);
+  if (!hasAnyData) {
     canvas.style.display = 'none';
     empty.style.display = 'block';
     return;
@@ -299,49 +296,56 @@ function renderRQ2Chart(matrix) {
   canvas.style.display = 'block';
   empty.style.display = 'none';
 
+  const labels = matrix.map((m) => m.scenario_id);
+  const coverage = matrix.map((m) => (m.rule_coverage != null ? Math.round(m.rule_coverage * 100) : null));
+  const falsePositive = matrix.map((m) => (m.false_positive_rate != null ? Math.round(m.false_positive_rate * 100) : null));
+
   const style = getComputedStyle(document.body);
   const textDim = style.getPropertyValue('--text-dim').trim();
   const border = style.getPropertyValue('--border').trim();
-  const blue = style.getPropertyValue('--blue').trim();
+  const green = style.getPropertyValue('--green').trim();
+  const orange = style.getPropertyValue('--orange').trim();
 
   Chart.defaults.color = textDim;
   Chart.defaults.borderColor = border;
 
   if (rq2Chart) rq2Chart.destroy();
   rq2Chart = new Chart(canvas, {
-    type: 'scatter',
+    type: 'bar',
     data: {
-      datasets: [{
-        label: '場景',
-        data: points,
-        backgroundColor: blue,
-        pointRadius: 6,
-        pointHoverRadius: 8,
-      }],
+      labels,
+      datasets: [
+        {
+          label: '規則覆蓋率 (%)',
+          data: coverage,
+          backgroundColor: green,
+        },
+        {
+          label: '誤報率 (%)',
+          data: falsePositive,
+          backgroundColor: orange,
+        },
+      ],
     },
     options: {
+      indexAxis: 'y',
+      maintainAspectRatio: false,
       scales: {
         x: {
-          title: { display: true, text: '規則覆蓋率 (%)', color: textDim },
           min: 0,
           max: 100,
+          ticks: { callback: (v) => `${v}%` },
           grid: { color: border },
         },
         y: {
-          title: { display: true, text: '誤報率 (%)', color: textDim },
-          min: 0,
-          max: 100,
-          grid: { color: border },
+          grid: { display: false },
         },
       },
       plugins: {
-        legend: { display: false },
+        legend: { position: 'top', labels: { color: textDim } },
         tooltip: {
           callbacks: {
-            label: (ctx) => {
-              const p = ctx.raw;
-              return `${p.label}：覆蓋率 ${p.x}%、誤報率 ${p.y}%`;
-            },
+            label: (ctx) => (ctx.raw == null ? `${ctx.dataset.label}：尚無資料` : `${ctx.dataset.label}：${ctx.raw}%`),
           },
         },
       },
