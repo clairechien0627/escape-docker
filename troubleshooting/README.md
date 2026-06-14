@@ -39,3 +39,7 @@
 - [strace-ground-truth-pilot.md](strace-ground-truth-pilot.md) — Phase B：room2 用 strace 包裝會讓 `sudo` 喪失 setuid 提權效果（kernel 安全機制），改以 room6 為 pilot 取得 ground truth；過程中發現 strace 自身的 ptrace 操作會讓 Falco 觸發數千筆 `Ptrace Attach To Other Process` 告警，撐爆 `data/runs.json`（6.1MB），修復為 `alert_rule_counts` + `MAX_RUN_ALERTS` 上限
 - [room8-curl-race-condition-app-not-ready.md](room8-curl-race-condition-app-not-ready.md) — 清除歷史重跑 15 場景時，room8 在 `docker compose up -d` 回傳後立即 `curl localhost:8080` 因 app 尚未 bind port 而 `ECONNRESET`，被誤判為 `failed`；改為最多重試 15 秒的輪詢
 - [measurable-falco-rules-duplicate-mapping.md](measurable-falco-rules-duplicate-mapping.md) — Phase 8 baseline run 後，`measurableFalcoRules` 未去重導致 `false_positive_rules` 出現重複項目、`false_positive_rate`/`rule_coverage` 分母失真（room0/final）
+
+## 2026-06-15
+
+- [mass-room-container-oom-kills.md](mass-room-container-oom-kills.md) — 15×2 Baseline 批次後與 `docker restart escape-falco` 後，兩波房間容器被 OOM-kill（exit 137/143）；根因為 Falco 累積 14 萬+ 筆告警積壓（37 分鐘延遲，主因 room6 strace pilot 的 Ptrace 告警）+ 房間容器無記憶體限制，皆以 `docker compose up -d` 恢復

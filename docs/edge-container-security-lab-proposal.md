@@ -222,7 +222,7 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
 | Phase 4 | `lab/index.html` 控制台（場景選擇、執行設定、歷史列表） | 平台核心 | ✅ 已完成（基本版） |
 | Phase 5 | 對照實驗執行 + `lab/analytics.html`（偵測率/延遲矩陣、誤報率） | RQ2 | ✅ 已完成（基本版） |
 | Phase 6 | Raspberry Pi 節點部署 + 資源開銷實驗 + x86/Pi 對照圖表 | RQ3 | 未開始（委派給 Pi 負責的隊員） |
-| Phase 7 | Hub 整合（Lab 為主模組、Story Mode 為附屬模組）+ 整合測試 + 報告 | 整合 | 部分完成 |
+| Phase 7 | Hub 整合（Lab 為主模組、Story Mode 為附屬模組）+ 整合測試 + 報告 | 整合 | ✅ 已完成 |
 | Phase 8 | 無 Pi 時的替代/補強指標：偵測延遲 `avg_detection_latency_ms`、baseline run + 誤報率 `false_positive_rate`、`GET /api/lab/analytics/resource-usage`（RQ3 代理量測） | RQ2/RQ3 | ✅ 已完成 |
 
 > Phase 3/4 實作細節：
@@ -260,9 +260,8 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
 >   `troubleshooting/falco-container-context-not-resolved.md` 第 8 節與
 >   `falco/README.md` 第 4.6 節。殘留限制（`container.name` 仍為
 >   `null`、`run.alerts` 以時間窗口而非 container 關聯）見上述文件
-> - Phase 7（部分）：`frontend/index.html` 首頁新增「🧪 Security Lab」
->   CTA 按鈕與簡短的 Lab 模組介紹區塊，作為 Story Mode 之外的第二入口；
->   尚未進行「Lab 為主模組」的完整版面重排與整合測試/報告
+> - Phase 7（基本版）：`frontend/index.html` 首頁新增「🧪 Security Lab」
+>   CTA 按鈕與簡短的 Lab 模組介紹區塊，作為 Story Mode 之外的第二入口
 > - **2026-06-14 新增（RQ2 第二種偵測機制對照，pilot）**：在 `room6`
 >   試行 `step_traced`——以 `strace -f` 包裝 exploit 指令，取得
 >   `execve`/`openat`/`connect` 的 ground truth（不依賴規則），併入
@@ -322,6 +321,20 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
 >   出現重複項目、`false_positive_rate` 分母失真（`final` 由錯誤的
 >   0.667 修正為 0.5）。詳見
 >   `troubleshooting/measurable-falco-rules-duplicate-mapping.md`
+>
+> Phase 7 完成（2026-06-15，Hub 整合收尾）：
+> - **導覽列一致化**：Hub 三頁（`map.html`/`scoreboard.html`/
+>   `achievements.html`）與 Lab 三頁（`lab/index.html`/
+>   `lab/analytics.html`/`lab/run.html`）的 `navbar-links` 統一包含
+>   全部 6 個入口（Map / Score / 成就 / Lab / 分析），消除先前
+>   Hub→Lab 單向連結、Lab 內部缺 Hub 連結的不對稱
+> - **首頁 Lab 模組曝光強化**：`frontend/index.html` 的 `.lab-promo`
+>   區塊新增即時統計列（場景已執行 N/15、平均規則覆蓋率、平均誤報率），
+>   於頁面載入時呼叫既有的 `GET /api/lab/analytics/detection-matrix`
+>   計算（與 `analytics.html` 的 `loadAnalytics()` 採同一套平均值
+>   邏輯），並新增「查看分析 →」連結直達 `lab/analytics.html`
+> - 至此 Lab 模組與 Story Mode（Hub）之間的導覽互通與資料呈現已整合完成，
+>   Phase 7 標記為已完成
 
 ---
 
@@ -409,3 +422,220 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
   干擾指令），測試 Falco 規則對「同一漏洞、不同攻擊手法」的偵測穩健性，
   補強 RQ2 的結論深度
 - 工作量小，主要是多寫幾個變異版腳本
+
+> **2026-06-15 執行結果**：以 room1（base64 解碼 FLAG）做 pilot，將 recon
+> 步驟由 `find /home/player/archive -name '*.encoded'` 改為
+> `shopt -s globstar; ls /home/player/archive/**/*.encoded`（不再 spawn
+> `find` 行程，`base64 -d` 解碼步驟不變）。**結果**：FLAG 仍成功取得
+> （exploit 目標不受影響）；對應規則 `Recursive Find Under Archive
+> Directory`（condition: `proc.name = find and proc.cmdline contains
+> "/home/player/archive"`）就規則條件本身而言，**結構上不可能比對到
+> `ls`/glob 呼叫**——這條 proc.name 為基礎的規則可被簡單的工具替換繞過。
+>
+> 實際即時驗證時，因 Falco 當時有 37 分鐘的告警處理積壓（見
+> `troubleshooting/mass-room-container-oom-kills.md`），`docker logs
+> --since` 撈到一筆陳舊的「Recursive Find」告警（`time` 落後 37 分鐘、
+> `proc.cmdline` 仍是未變異的 `find ...`），造成誤判「規則仍觸發」；排查
+> 後確認該告警與本次變異測試無關。基於同一份文件記錄的「Falco 重啟會
+> 誘發第二波 mass OOM-kill」發現，後續變異（room1 的
+> `base64 -d → openssl base64 -d`、room5 的 `ss`/`netstat →
+> cat /proc/net/tcp`）改採**靜態規則條件分析**而不再執行即時驗證，結論見
+> 第 11.2 節。
+
+---
+
+## 11. RQ1-RQ3 初步結論（截至 2026-06-15，15 場景實測數據）
+
+> 本節彙整 `GET /api/lab/analytics/detection-matrix`（15 場景皆已執行
+> 過至少 1 次完整 exploit + 2 次 20 秒 baseline）與
+> `GET /api/lab/analytics/resource-usage` 的實測數據，回答 RQ1-3。
+> Raspberry Pi 對照實驗（Phase 6）仍未開始，RQ3 暫以 x86 上的代理指標
+> + 一次真實發生的運維事故作答。
+
+### 11.1 RQ1：風險分級
+
+依「exploit 成功後可達到的權限/存取範圍」將 15 個場景分為 4 個等級：
+
+| 等級 | 說明 | 場景 | 規則覆蓋率均值 |
+|---|---|---|---|
+| T1 | 純資訊洩漏，無需提權（讀檔、訊號、網路問答、修復後的服務） | room0, room1, room3, room5, room8, room10, secret-a | 0.833（6/7 有值，room10 為 null） |
+| T2 | 容器內提權至 root（sudo 誤設、cron 注入） | room2, room11 | 1.0 |
+| T3 | 跨容器/跨網段存取（SSH 跳板、docker network connect 突破網段隔離） | room4, room9 | 0.875 |
+| T4 | docker.sock → Docker daemon 完整控制，等同 host RCE | room6, room7, final, secret-b | 0.917 |
+
+**觀察**：
+
+- T2-T4（涉及提權、跨容器或 host 等級存取）的規則覆蓋率均值
+  （0.875~1.0）普遍**高於** T1（0.833）。這與 Falco 規則庫以
+  `sudo`/`docker.sock`/`cron`/SSH 等「提權後行為」的 syscall 特徵為
+  設計重點的方向一致——風險等級越高的攻擊鏈，留下的 syscall 痕跡
+  （`execve sudo`、`connect unix:/var/run/docker.sock`、
+  `cron 派生 root 行程`...）也越具體、越容易寫成規則。
+- T1 中風險最低的「純資訊洩漏」類型，反而是規則覆蓋率最低（room8 =
+  0.333）與唯一 `null`（room10）的所在——詳見 11.2。換言之，**風險
+  等級與「規則式偵測的可覆蓋程度」並非單調關係：低風險的資訊洩漏
+  有時反而是規則式 IDS 的盲區**，需要應用層/日誌層的補強手段。
+
+### 11.2 RQ2：偵測有效性
+
+**整體數據**（15 場景，14 場景有 `rule_coverage`）：
+
+- `detection_rate`：15/15 場景皆為 1（100%）——但此指標僅代表「run
+  期間收到至少一筆 Falco alert」，資訊量低（baseline 顯示即使無攻擊
+  也會持續收到告警，見下）
+- `rule_coverage` 平均 **88.7%**（14 場景，room10 為 `null`）
+- `avg_detection_latency_ms` 平均約 **1.77 秒**（44ms\~5.9s）
+- `false_positive_rate` 平均 **26.8%**（14 場景，room10 為 `null`）
+
+**發現 1——room10：規則式（syscall/eBPF）偵測的結構性盲區**
+
+room10（跨日誌關聯分析找出洩漏的 session token）是全部 15 場景中
+唯一 `rule_coverage`/`false_positive_rate` 皆為 `null` 的場景。其
+`falco_rule_refs`（`ssh_bruteforce_pattern`、
+`sensitive_endpoint_access`、`sensitive_token_in_log`）對應到
+`falco/rules/lab_rules.yaml` 中**已停用的「概念性規則」**或直接對應
+`null`（見 `lab-api/lib/app.js` 的 `FALCO_RULE_REF_MAP`/
+`DISABLED_FALCO_RULES`）。
+
+根本原因：room10 的漏洞本質是「**應用層日誌中以明文記錄了敏感
+token**」——這是一個資料層面的問題，不涉及任何異常的 syscall（讀取
+自己的 log 檔案是完全正常的行為）。Falco 作為 syscall/eBPF 層級的
+IDS，**結構上無法、也不應該**對「正常的檔案讀取」標記告警。要覆蓋
+這類弱點，需要日誌聚合/SIEM 類工具（基於日誌**內容**做模式比對，
+例如偵測 log 中出現形似 token/credential 的字串），而非 Falco 這類
+基於系統呼叫行為的工具。**這是 RQ2 的核心負面結果**：規則式
+（行為層）偵測與日誌內容稽核（資料層）是互補而非取代關係，15 個
+場景中至少有 1 個（room10）完全落在 Falco 的覆蓋範圍之外。
+
+**發現 2——room8：規則覆蓋率最低（0.333）的「修復型」場景**
+
+room8 的目標是修正 `docker-compose.yml` 設定錯誤，讓 app 容器正常
+啟動並透過 HTTP（port 8080）回應 FLAG。`falco_rule_refs` 三條規則中
+僅 `Docker Compose Executed In Container` 觸發；`New Container
+Created Via Docker CLI` 與 `Local Service Port Scan`-style 的
+`local_http_request_nonstandard_port` 未觸發。推測原因：修復後的
+HTTP 請求是對**已開放、標準的** 8080 port，不符合「nonstandard
+port」類規則的條件；而容器啟動是透過 `docker compose up`（已被
+`Docker Compose Executed In Container` 涵蓋），不會額外觸發
+`New Container Created Via Docker CLI`（該規則描述的是 `docker run`/
+`docker create` 直接建立的容器）。這顯示**規則與 scenario 設計之間
+的「對應關係」需要與實際操作路徑仔細核對**，並非每條
+`falco_rule_refs` 都會在最自然的解法路徑下觸發。
+
+**發現 3——誤報率：多條規則在零攻擊的 baseline 期間持續觸發**
+
+15 場景的 `baseline_alert_rate_per_min` 介於 90～742.5
+（平均約 284 筆/分鐘），即使完全不執行攻擊，20 秒內也會累積數十筆
+告警。貢獻 `false_positive_rate` 的規則集中在：
+
+- `Baseline Read Of Motd Or Hint File`（room0：`false_positive_rate
+  = 1`，唯一可量測規則本身就是高頻誤報規則，無法用於區分攻擊/正常）
+- `DAC Read Search Capability Used`（room2/room3 等）
+- `Unexpected Child Process In Container Via Docker Exec`
+  （room6/final/secret-a：`false_positive_rate = 0.5`）
+- `Cron Spawned Root Process`（room11）
+- `Read Proc Cmdline Or Environ Of Other Process`（room3/secret-a）
+
+這些規則描述的行為（讀取 motd、cron 派生行程、`docker exec` 注入的
+子行程、讀取其他行程 `/proc` 資訊）在「terminal-gateway 維持的長駐
+session + room-manager 週期性健康檢查 + Falco 自身對所有 container
+的 enrichment」等背景活動下本來就會持續發生——**這些規則本身的設計
+假設（「這個行為=攻擊」）在本平台的營運環境下不成立**，是 RQ2
+誤報率分析的核心發現。
+
+**發現 4——攻擊腳本變異測試（10.4）：proc.name 類規則的脆弱性 vs
+fd/connection 類規則的穩健性**
+
+對 room1 的 pilot（`find` → `ls`/glob，結果見 10.4）以及 room1
+（`base64 -d` → `openssl base64 -d`）、room5（`ss`/`netstat` →
+`cat /proc/net/tcp`）的**靜態規則條件分析**（因環境穩定性風險未即時
+執行，見 10.4 與第 12 節）一致指向同一個結論：
+
+| 規則 condition（節錄） | 替換後的指令 | 是否仍能比對 |
+|---|---|---|
+| `proc.name = find and proc.cmdline contains "/home/player/archive"` | `bash -c 'ls /home/player/archive/**/*.encoded'` | ❌ 不會比對（無 `find` 行程） |
+| `proc.name = base64 and proc.cmdline contains "-d"` | `openssl base64 -d -in <file>` | ❌ 不會比對（`proc.name = openssl`） |
+| `proc.name in (ss, netstat)` | `cat /proc/net/tcp` | ❌ 不會比對（`proc.name = cat`） |
+| `fd.sip = "127.0.0.1" and fd.sport = 7777` | （任何能對 127.0.0.1:7777 建立連線的工具） | ✅ 仍會比對（比對的是 `connect()` 的實際端點，與呼叫工具無關） |
+
+**結論**：以 `proc.name`/`proc.cmdline` 比對特定工具名稱的規則，
+本質上是一份「已知工具黑名單」——只要攻擊者（或玩家用替代工具解題）
+換一個能達成同等效果的指令，規則即失效，但**漏洞本身與 exploit 的
+最終結果（取得 FLAG/權限）完全不受影響**。相對地，以 `fd.sip`/
+`fd.sport`/`fd.name` 等「syscall 實際參數」（連線端點、檔案路徑）為
+條件的規則，不論呼叫者是 `nc`、`curl`、`python -c`還是 shell
+`/dev/tcp`，只要實際發生對應的 `connect`/`open`，規則就會比對到——
+**這是規則設計上「行為事實」優於「工具名稱」的具體證據**，也是
+`falco/rules/lab_rules.yaml` 後續若要強化穩健性時的優先改進方向
+（將 proc.name 類規則盡可能改寫或補充為 fd/connection 類條件）。
+
+### 11.3 RQ3：邊緣資源成本
+
+**代理指標（單機快照，`GET /api/lab/analytics/resource-usage`）**：
+
+| 服務 | CPU% | 記憶體 |
+|---|---|---|
+| `escape-falco` | 1.22%\~8.53%（視當下事件處理量波動） | 73.91\~91.84 MiB |
+| `lab-api` | 4.04% | 49.95 MiB |
+| `room-manager` | 0% | 33.46 MiB |
+
+`escape-falco` 的常駐記憶體略高於 `lab-api`/`room-manager`，且 CPU
+使用率會隨告警處理量明顯波動（重啟剛完成、eBPF probe 重新 attach 時
+達 8.53%，穩定期約 1.2%）——在資源受限的邊緣裝置上，這個波動幅度
+本身就是需要被納入容量規劃的因素。
+
+**核心發現——一次真實的 mass OOM-kill 運維事故**
+（詳見 `troubleshooting/mass-room-container-oom-kills.md`）：
+
+本次 session 中，15 場景 × 2 次 Baseline 批次執行後，**全部 15 個
+房間容器 + 5 個附屬容器（secret-a/secret-b/final/locked-server/
+secret-server）被 host 端 OOM-killer 以 `SIGKILL`（exit 137）終止**；
+排查過程中執行 `docker restart escape-falco`（清除其 37 分鐘的告警
+處理積壓）後約 2 分鐘，**又有 5 個房間容器**被終止（exit 137/143）。
+兩波事件中 `escape-falco` 自身的記憶體使用都正常（<100MiB），真正的
+受害者是**完全沒有設定 `mem_limit` 的房間容器**。
+
+根因分析指出兩個獨立但相關的觸發源：
+
+1. **告警量的累積效應**：Falco 7 小時運行期間累積了 14 萬+ 行日誌，
+   其中 121,525 筆為 `Ptrace Attach To Other Process`
+   （主要來自 [[strace-ground-truth-pilot.md]] 的 room6
+   ground-truth pilot），處理速度跟不上產生速度，形成持續增長的
+   積壓與延遲（一度達 37 分鐘）。15×2 Baseline 批次（每場景額外
+   90\~742.5 筆/分鐘的背景告警）疊加在這個既有負載之上，足以推高
+   host/WSL2 VM 的整體資源使用至觸發 OOM 的程度。
+2. **偵測器本身的重啟成本**：`docker restart escape-falco`（`pid:
+   host` + `privileged: true` 的 modern_eBPF probe 重新 attach 到
+   所有 host 行程、並為所有運行中容器重建 enrichment）這個操作本身
+   造成的瞬時資源尖峰，**即使此時告警積壓已清空**，仍足以再次觸發
+   OOM-killer。
+
+**RQ3 結論**：在資源受限的邊緣環境中，「啟用規則式偵測」的成本不能
+只看穩態的 CPU/RAM 佔用（本案例中 `escape-falco` 穩態僅
+1.22%/~90MiB，看起來很輕量）——**偵測器的告警處理管線若長期累積
+（高頻規則 + 長時間運行）、或偵測器自身的重啟/重新初始化，都可能
+造成瞬時的系統級資源尖峰，間接波及其他完全無關的工作負載**（本案例
+中是沒有記憶體上限的房間容器）。這對邊緣裝置（資源餘裕本就小於
+x86 開發機）的意義更顯著：建議至少（a）為每個工作負載容器設定
+`mem_limit`，限制 OOM 影響範圍；（b）對高頻規則（如本案例的
+`Ptrace Attach To Other Process`）做 rate-limit 或排除；（c）避免
+非必要的偵測器重啟。Raspberry Pi 對照實驗（Phase 6）若後續執行，
+建議優先重現本節的「告警積壓」情境，觀察 ARM 平台下資源尖峰的
+絕對數值與影響範圍是否更嚴重。
+
+---
+
+## 12. 已知限制與後續工作彙整
+
+- **Raspberry Pi 對照實驗（Phase 6）**：仍未開始，RQ3 暫以 x86
+  代理指標 + 11.3 的運維事故作答；建議優先重現「Falco 告警積壓 +
+  重啟」情境
+- **room10 的日誌層偵測缺口（11.2 發現 1）**：規則式偵測的結構性
+  盲區，若要覆蓋需引入日誌內容稽核工具，列為未來工作
+- **`falco/rules/lab_rules.yaml` 的 proc.name 類規則穩健性
+  （11.2 發現 4）**：room1/room5 的 `openssl base64 -d`/
+  `cat /proc/net/tcp` 變異版本，因環境穩定性風險（見
+  `troubleshooting/mass-room-container-oom-kills.md`）僅完成靜態
+  規則條件分析、未即時執行驗證，列為未來工作
+- **房間容器記憶體上限**：`docker-compose.yml` 的 `x-room-defaults`
+  尚未設定 `mem_limit`，是 11.3 mass OOM-kill 事故的直接成因之一

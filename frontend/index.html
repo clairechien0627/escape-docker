@@ -71,6 +71,9 @@
     }
     .lab-promo .lab-promo-title { color: var(--cyan); font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; }
     .lab-promo a { color: var(--cyan); }
+    .lab-promo-stats { display: flex; gap: 1.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+    .lab-promo-stats .stat-num { font-size: 1.3rem; font-weight: 700; color: var(--cyan); }
+    .lab-promo-stats .stat-label { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.1rem; }
 
     .hero-cta {
       display: flex;
@@ -232,7 +235,12 @@
     <p>同一套 15 個容器環境，也是一個<strong style="color:var(--cyan)">可重複執行的攻擊鏈實驗平台</strong>：
     選擇場景、按下執行，即時觀看攻擊腳本逐步取得權限，並對照
     Falco 的偵測告警與彙整後的偵測率分析——適合用來研究「規則式偵測在邊緣容器環境下的有效性」。</p>
-    <p style="margin-top:0.5rem"><a href="lab/index.html">進入 Lab →</a></p>
+    <div class="lab-promo-stats" id="lab-promo-stats">
+      <div class="stat-item"><div class="stat-num" id="lab-promo-ran">—</div><div class="stat-label">場景已執行</div></div>
+      <div class="stat-item"><div class="stat-num" id="lab-promo-coverage">—</div><div class="stat-label">平均規則覆蓋率</div></div>
+      <div class="stat-item"><div class="stat-num" id="lab-promo-fp">—</div><div class="stat-label">平均誤報率</div></div>
+    </div>
+    <p style="margin-top:0.5rem"><a href="lab/index.html">進入 Lab →</a> · <a href="lab/analytics.html">查看分析 →</a></p>
   </div>
 
   <div class="typing-line" id="typing-line">$ <span id="typing-text"></span><span class="cursor"></span></div>
@@ -265,6 +273,27 @@
     setTimeout(typeLoop, deleting ? 30 : 60);
   }
   typeLoop();
+
+  (async function loadLabPromoStats() {
+    try {
+      const matrix = await apiFetch('/lab/analytics/detection-matrix');
+      const ranScenarios = matrix.filter((m) => m.runs > 0);
+      const coverableScenarios = matrix.filter((m) => m.rule_coverage != null);
+      const avgRuleCoverage = coverableScenarios.length
+        ? coverableScenarios.reduce((sum, m) => sum + m.rule_coverage, 0) / coverableScenarios.length
+        : null;
+      const baselineScenarios = matrix.filter((m) => m.baseline_runs > 0);
+      const avgFalsePositive = baselineScenarios.length
+        ? baselineScenarios.reduce((sum, m) => sum + m.false_positive_rate, 0) / baselineScenarios.length
+        : null;
+
+      document.getElementById('lab-promo-ran').textContent = `${ranScenarios.length} / ${matrix.length}`;
+      document.getElementById('lab-promo-coverage').textContent = avgRuleCoverage != null ? `${Math.round(avgRuleCoverage * 100)}%` : '—';
+      document.getElementById('lab-promo-fp').textContent = avgFalsePositive != null ? `${Math.round(avgFalsePositive * 100)}%` : '—';
+    } catch (e) {
+      // Lab 分析資料載入失敗時，保留 "—" 預設值即可，不影響主頁其他內容
+    }
+  })();
 </script>
 </body>
 </html>
