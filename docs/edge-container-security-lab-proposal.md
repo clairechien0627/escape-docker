@@ -161,8 +161,8 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
 | `GET` | `/api/lab/runs/:id/stream` (WS) | 即時串流：攻擊腳本 stdout + Falco 告警事件 |
 | `GET` | `/api/lab/runs` | 歷史執行列表（含 detected / latency / final_privilege） |
 | `GET` | `/api/lab/runs/:id` | 單次執行詳情（完整 log + 告警時間軸） |
-| `GET` | `/api/lab/analytics/detection-matrix` | RQ2：15 場景 × Falco ruleset 的偵測率/誤報率矩陣 |
-| `GET` | `/api/lab/analytics/resource-overhead` | RQ3：房間數 × CPU/RAM（x86 vs Pi） |
+| `GET` | `/api/lab/analytics/detection-matrix` | RQ2：15 場景的偵測率 `detection_rate`、規則覆蓋率 `rule_coverage`、偵測延遲 `avg_detection_latency_ms`、誤報率 `false_positive_rate`（來自 baseline run，見第 6 節 Phase 8） |
+| `GET` | `/api/lab/analytics/resource-usage` | RQ3 代理量測：`docker stats --no-stream` 快照（`escape-falco`/`lab-api`/`room-manager`），無 Pi 時用「Falco 相對其他常駐服務的額外開銷比例」作為邊緣裝置監控成本的代理指標；房間數 × CPU/RAM（x86 vs Pi）的完整對照仍待 Phase 6 的 Raspberry Pi 部署 |
 
 **單次執行流程**（lab-api 內部）：
 
@@ -223,6 +223,7 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
 | Phase 5 | 對照實驗執行 + `lab/analytics.html`（偵測率/延遲矩陣、誤報率） | RQ2 | ✅ 已完成（基本版） |
 | Phase 6 | Raspberry Pi 節點部署 + 資源開銷實驗 + x86/Pi 對照圖表 | RQ3 | 未開始（委派給 Pi 負責的隊員） |
 | Phase 7 | Hub 整合（Lab 為主模組、Story Mode 為附屬模組）+ 整合測試 + 報告 | 整合 | 部分完成 |
+| Phase 8 | 無 Pi 時的替代/補強指標：偵測延遲 `avg_detection_latency_ms`、baseline run + 誤報率 `false_positive_rate`、`GET /api/lab/analytics/resource-usage`（RQ3 代理量測） | RQ2/RQ3 | ✅ 已完成 |
 
 > Phase 3/4 實作細節：
 > - `lab-api` 改為非同步執行模型（`POST /api/lab/runs` 立即回傳 `202`），
@@ -273,6 +274,54 @@ docker.sock 暴露、SUID 二進位、cron job 注入、敏感檔案權限等）
 >   `alert_rule_counts` + `MAX_RUN_ALERTS` 上限避免 `data/runs.json`
 >   暴增。15 場景全面推廣列為未來工作，詳見
 >   `troubleshooting/strace-ground-truth-pilot.md`
+>
+> Phase 8 實作細節（2026-06-14，無 Raspberry Pi 時的 RQ2/RQ3 補強）：
+> - **偵測延遲 `avg_detection_latency_ms`**：對每次 run，取第一筆
+>   `alert.rule ∈ measurableFalcoRules(scenario)` 的告警，計算
+>   `alert.received_at - run.started_at`（兩者皆為 lab-api 自己的時鐘，
+>   避免與 `escape-falco` container 的時鐘飄移），取平均值。15 場景重跑
+>   後的實測值落在 44ms（room2）～5943ms（room9）之間，`room10`
+>   （`falco_rule_refs` 對應規則皆為 `null`/停用）恆為 `null`
+> - **誤報率 baseline run**：新增 `POST /api/lab/baseline-runs`
+>   （`run-manager.js` 的 `startBaselineRun`）——不執行 exploit，只
+>   reset 房間後靜置 `duration_ms`（預設 20000ms）收集 Falco 告警，
+>   寫入 `data/runs.json` 時帶 `type: "baseline"`。
+>   `detection-matrix` 新增 `baseline_runs`/`baseline_duration_ms`/
+>   `baseline_alerts_total`/`baseline_alert_rate_per_min`/
+>   `false_positive_rules`/`false_positive_rate`（後二者為
+>   `measurableFalcoRules` 中曾在無攻擊期間也觸發過的規則/比例）。
+>   `frontend/lab/index.html` 每個場景卡片新增「🔬 Baseline (20s)」按鈕，
+>   `frontend/lab/analytics.html` 新增「🔬 執行全部 Baseline (15×20s)」
+>   一次跑完 15 個場景
+> - **15 場景 baseline 實測結果**：所有場景的
+>   `baseline_alert_rate_per_min` 都遠高於 0（93～831 筆/分鐘），主要
+>   來自 `DAC Read Search Capability Used`（單次 20 秒靜置即可達
+>   24～245 筆）、`Packet socket created in container`、
+>   `Unexpected Child Process In Container Via Docker Exec`、
+>   `Terminal shell in container` 等規則——這些規則在「完全沒有攻擊」的
+>   情況下也會持續觸發，是 RQ2 誤報率分析的核心發現之一。對應到
+>   `measurableFalcoRules` 後，`room0`/`room2`/`room3`/`room6`/`room9`/
+>   `room11`/`final` 的 `false_positive_rate` 為 0.25～1（即該場景部分或
+>   全部「可量測規則」本身就是高頻誤報規則），其餘場景為 0（`room10`
+>   因無可量測規則而為 `null`）
+> - **資源開銷 `GET /api/lab/analytics/resource-usage`（RQ3 代理量測）**：
+>   透過 lab-api 既有的 `/var/run/docker.sock` 掛載 + 新增的
+>   `docker-cli`（`Dockerfile`）對 `escape-falco`/`lab-api`/
+>   `room-manager` 執行 `docker stats --no-stream`
+>   （`lib/docker-stats.js`）。單機快照下 `escape-falco` 約
+>   1.25% CPU / 91.78MiB，相對 `lab-api`（5.93% CPU / 36.53MiB）與
+>   `room-manager`（0% CPU / 32.56MiB）的記憶體佔用明顯更高——
+>   雖無法直接換算 Raspberry Pi 的實際數字，但可作為「在邊緣裝置上啟用
+>   規則式偵測的常駐成本」的代理指標，待 Phase 6 實際部署 Pi 後再做
+>   x86 vs ARM 對照
+> - **過程中發現並修復一個既有 bug**：`measurableFalcoRules()`
+>   （`rule_coverage`/`false_positive_rate` 的分母）原本未對「多個
+>   `falco_rule_refs` 對應同一條 Falco 規則」的情況去重（例如
+>   `read_etc_motd`/`read_hint_file` 都對應
+>   `Baseline Read Of Motd Or Hint File`），導致 `false_positive_rules`
+>   出現重複項目、`false_positive_rate` 分母失真（`final` 由錯誤的
+>   0.667 修正為 0.5）。詳見
+>   `troubleshooting/measurable-falco-rules-duplicate-mapping.md`
 
 ---
 

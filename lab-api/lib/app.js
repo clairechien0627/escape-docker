@@ -2,6 +2,10 @@ const express = require('express');
 
 const MAX_ALERTS = 500;
 
+// 誤報率基準測試（baseline run）的預設靜置時長：reset 房間後不執行任何
+// exploit，靜置這段時間收集 Falco 告警，見 POST /api/lab/baseline-runs。
+const DEFAULT_BASELINE_DURATION_MS = 20000;
+
 // falco_rule_refs（lab/scenarios/*.json）↔ lab_rules.yaml 規則名稱對照表，
 // 對應 falco/README.md 第 2 節。value 為 null 表示該 ref 描述的行為沒有
 // 對應的 Falco 規則（語意上無法由 syscall 層級規則偵測，見該文件「說明①②」），
@@ -61,11 +65,16 @@ const DISABLED_FALCO_RULES = new Set([
 ]);
 
 // 該 scenario 的 falco_rule_refs 中，有對應且已啟用的 Falco 規則名稱清單
-// （rule_coverage 的分母）。
+// （rule_coverage / false_positive_rate 的分母）。多個 falco_rule_refs
+// 可能對應到同一條 Falco 規則（例如 read_etc_motd 與 read_hint_file 都對應
+// 'Baseline Read Of Motd Or Hint File'），需去重，否則該規則會在分母中被
+// 重複計入，使 rule_coverage/false_positive_rate 失真，
+// false_positive_rules 也會出現重複項目。
 function measurableFalcoRules(falcoRuleRefs) {
-  return (falcoRuleRefs || [])
+  const ruleNames = (falcoRuleRefs || [])
     .map((ref) => FALCO_RULE_REF_MAP[ref])
     .filter((ruleName) => ruleName && !DISABLED_FALCO_RULES.has(ruleName));
+  return [...new Set(ruleNames)];
 }
 
 // scenario 物件給「列表」用的精簡版本（省略 exploit_steps/falco_relevant_behaviors 等細節）
@@ -77,7 +86,7 @@ function toScenarioSummary(scenario) {
 // run 物件給「列表」用的精簡版本（省略 steps/stderr 等大型欄位）
 function toRunSummary(run) {
   const { id, scenario_id, started_at, finished_at, status, final_privilege, flag_found, duration_ms, exit_code } = run;
-  return { id, scenario_id, started_at, finished_at, status, final_privilege, flag_found, duration_ms, exit_code };
+  return { id, scenario_id, started_at, finished_at, status, final_privilege, flag_found, duration_ms, exit_code, type: run.type || 'exploit' };
 }
 
 // 對外回傳「執行中」run 的精簡狀態（不含 emitter）
@@ -86,7 +95,7 @@ function toRunSnapshot(run) {
   return snapshot;
 }
 
-function createApp({ scenarios, db, runManager }) {
+function createApp({ scenarios, db, runManager, dockerStats, resourceUsageContainers = [] }) {
   const app = express();
   app.use(express.json());
 
@@ -112,6 +121,17 @@ function createApp({ scenarios, db, runManager }) {
     if (!scenario) return res.status(404).json({ error: 'unknown scenario' });
 
     const run = runManager.startRun(scenarioId);
+    res.status(202).json(toRunSnapshot(run));
+  });
+
+  // ── 誤報率基準測試（不執行 exploit，只靜置收集 Falco 告警，RQ2）──
+  app.post('/api/lab/baseline-runs', (req, res) => {
+    const scenarioId = req.body && req.body.scenario_id;
+    const scenario = scenarioById.get(scenarioId);
+    if (!scenario) return res.status(404).json({ error: 'unknown scenario' });
+
+    const durationMs = Number(req.body && req.body.duration_ms) || DEFAULT_BASELINE_DURATION_MS;
+    const run = runManager.startBaselineRun(scenarioId, durationMs);
     res.status(202).json(toRunSnapshot(run));
   });
 
@@ -156,19 +176,24 @@ function createApp({ scenarios, db, runManager }) {
     res.json(alerts.slice().reverse());
   });
 
-  // ── 分析（RQ2：15 場景的偵測率/誤報率彙整，Phase 5）──────────
+  // ── 分析（RQ2：15 場景的偵測率/誤報率彙整，Phase 5/8）──────────
   // 以歷史 runs（db）為基礎，依 scenario 彙整：成功率、flag 取得率、
   // 平均耗時、「偵測率」（該次 run 期間是否收到任一 Falco 告警，
-  // run.alerts.length > 0），以及「規則覆蓋率」rule_coverage（該 scenario
+  // run.alerts.length > 0）、「規則覆蓋率」rule_coverage（該 scenario
   // 的 falco_rule_refs 中，有對應且已啟用的規則，曾在任一次 run 中被
-  // alert.rule 命中的比例，見 FALCO_RULE_REF_MAP）。即使某場景尚無任何
-  // run 也會列出（全為 null/0），讓前端可以呈現完整的 15 列表格。
+  // alert.rule 命中的比例，見 FALCO_RULE_REF_MAP）、「偵測延遲」
+  // avg_detection_latency_ms，以及來自 baseline run（type: 'baseline'，
+  // POST /api/lab/baseline-runs；不執行 exploit，只靜置收集告警）的
+  // 「誤報率」false_positive_rate（measurable 規則中，在無攻擊期間也曾
+  // 觸發過的比例）。即使某場景尚無任何 run 也會列出（全為 null/0），
+  // 讓前端可以呈現完整的 15 列表格。
   app.get('/api/lab/analytics/detection-matrix', (req, res) => {
     const stats = new Map(scenarios.map((s) => [s.id, {
       scenario_id: s.id,
       title: s.title,
       vuln_type: s.vuln_type,
       falco_rule_refs: s.falco_rule_refs || [],
+      measurable: measurableFalcoRules(s.falco_rule_refs || []),
       runs: 0,
       successCount: 0,
       flagCount: 0,
@@ -176,12 +201,38 @@ function createApp({ scenarios, db, runManager }) {
       durationCount: 0,
       detectedCount: 0,
       triggeredRuleNames: new Set(),
+      latencySum: 0,
+      latencyCount: 0,
+      baselineRuns: 0,
+      baselineDurationMs: 0,
+      baselineAlertsTotal: 0,
+      baselineTriggeredRuleNames: new Set(),
       last_run_at: null,
     }]));
 
     for (const run of db.list()) {
       const entry = stats.get(run.scenario_id);
       if (!entry) continue;
+
+      // baseline run（POST /api/lab/baseline-runs）不執行 exploit，只用來
+      // 量測「沒有攻擊時」的告警噪音，分開統計，不計入成功率/偵測率等指標。
+      if (run.type === 'baseline') {
+        entry.baselineRuns += 1;
+        if (typeof run.duration_ms === 'number') entry.baselineDurationMs += run.duration_ms;
+        if (run.alert_rule_counts && Object.keys(run.alert_rule_counts).length > 0) {
+          for (const [ruleName, count] of Object.entries(run.alert_rule_counts)) {
+            entry.baselineAlertsTotal += count;
+            entry.baselineTriggeredRuleNames.add(ruleName);
+          }
+        } else if (Array.isArray(run.alerts)) {
+          entry.baselineAlertsTotal += run.alerts.length;
+          for (const a of run.alerts) {
+            const ruleName = a && a.alert && a.alert.rule;
+            if (ruleName) entry.baselineTriggeredRuleNames.add(ruleName);
+          }
+        }
+        continue;
+      }
 
       entry.runs += 1;
       if (run.status === 'success') entry.successCount += 1;
@@ -204,13 +255,36 @@ function createApp({ scenarios, db, runManager }) {
           if (ruleName) entry.triggeredRuleNames.add(ruleName);
         }
       }
+      // 偵測延遲：該 run 期間第一筆「rule 屬於 measurable」的告警，
+      // received_at（lab-api 收到 webhook 的時間）與 started_at
+      // （lab-api 發起 run 的時間）都是 lab-api 自己的時鐘，避免
+      // Falco container 與 lab-api 之間的時鐘飄移影響量測。
+      if (Array.isArray(run.alerts) && entry.measurable.length > 0 && run.started_at) {
+        const startedAtMs = Date.parse(run.started_at);
+        for (const a of run.alerts) {
+          const ruleName = a && a.alert && a.alert.rule;
+          if (!ruleName || !entry.measurable.includes(ruleName)) continue;
+          const receivedAtMs = Date.parse(a.received_at);
+          if (!Number.isNaN(receivedAtMs) && !Number.isNaN(startedAtMs)) {
+            entry.latencySum += receivedAtMs - startedAtMs;
+            entry.latencyCount += 1;
+          }
+          break;
+        }
+      }
       if (!entry.last_run_at || run.finished_at > entry.last_run_at) entry.last_run_at = run.finished_at;
     }
 
     const matrix = [...stats.values()].map((e) => {
-      const measurable = measurableFalcoRules(e.falco_rule_refs);
+      const measurable = e.measurable;
       const triggeredRules = measurable.filter((ruleName) => e.triggeredRuleNames.has(ruleName));
       const triggeredRulesUnique = [...new Set(triggeredRules)];
+
+      // 誤報候選：在「沒有攻擊」的 baseline run 期間也觸發過的可量測規則。
+      const falsePositiveRules = measurable.filter((ruleName) => e.baselineTriggeredRuleNames.has(ruleName));
+      const baselineAlertRatePerMin = e.baselineDurationMs > 0
+        ? Math.round((e.baselineAlertsTotal / (e.baselineDurationMs / 60000)) * 100) / 100
+        : null;
 
       return {
         scenario_id: e.scenario_id,
@@ -224,11 +298,35 @@ function createApp({ scenarios, db, runManager }) {
         detection_rate: e.runs ? e.detectedCount / e.runs : null,
         rule_coverage: e.runs && measurable.length ? triggeredRules.length / measurable.length : null,
         triggered_rules: triggeredRulesUnique,
+        avg_detection_latency_ms: e.latencyCount ? Math.round(e.latencySum / e.latencyCount) : null,
+        baseline_runs: e.baselineRuns,
+        baseline_duration_ms: e.baselineDurationMs,
+        baseline_alerts_total: e.baselineAlertsTotal,
+        baseline_alert_rate_per_min: baselineAlertRatePerMin,
+        false_positive_rules: falsePositiveRules,
+        false_positive_rate: e.baselineRuns && measurable.length ? falsePositiveRules.length / measurable.length : null,
         last_run_at: e.last_run_at,
       };
     });
 
     res.json(matrix);
+  });
+
+  // ── 資源開銷（RQ3 代理量測：無 Raspberry Pi 時，以 x86 環境量化
+  // Falco 規則式偵測的額外資源開銷）──────────────────────────
+  // 透過 /var/run/docker.sock + docker-cli（見 lab-api/Dockerfile）取得
+  // escape-falco/lab-api/room-manager 等常駐容器的即時 CPU/記憶體用量
+  // （docker stats --no-stream）。單台機器上的快照無法直接換算成
+  // Raspberry Pi 的實際數字，但 escape-falco 相對其他常駐服務的額外開銷
+  // 比例可作為「邊緣裝置上啟用規則式偵測的成本」的代理指標。
+  app.get('/api/lab/analytics/resource-usage', async (req, res) => {
+    if (!dockerStats) return res.status(501).json({ error: 'docker stats unavailable' });
+    try {
+      const containers = await dockerStats.statsFor(resourceUsageContainers);
+      res.json({ collected_at: new Date().toISOString(), containers });
+    } catch (err) {
+      res.status(502).json({ error: 'docker stats failed', message: err.message });
+    }
   });
 
   return app;

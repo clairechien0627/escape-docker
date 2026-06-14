@@ -58,7 +58,9 @@
     .rate-fill.bad  { background: var(--red); }
     .rate-text { font-size: 0.74rem; color: var(--text-dim); width: 38px; text-align: right; }
 
-    .toolbar { display: flex; justify-content: flex-end; margin-bottom: 0.75rem; }
+    .toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+
+    .section-title { font-size: 1rem; font-weight: 700; color: var(--text-main); margin: 1.5rem 0 0.75rem; }
   </style>
 </head>
 <body>
@@ -74,9 +76,11 @@
 
 <div class="page">
   <h1>📈 偵測率 / 誤報率分析</h1>
-  <p class="subtitle">彙整 15 個場景的歷史執行結果：成功率、FLAG 取得率、平均耗時、Falco 偵測率與規則覆蓋率（RQ2）。</p>
+  <p class="subtitle">彙整 15 個場景的歷史執行結果：成功率、FLAG 取得率、平均耗時、Falco 偵測率、規則覆蓋率與偵測延遲（RQ2）。</p>
 
   <div class="toolbar">
+    <span id="baseline-progress" class="dim-cell" style="margin-right: 0.75rem; font-size: 0.78rem; align-self: center;"></span>
+    <button class="btn" id="run-all-baselines-btn" title="依序對 15 個場景各執行一次 20 秒的 Baseline（不執行攻擊，只收集 Falco 告警），用於計算誤報率">🔬 執行全部 Baseline (15×20s)</button>
     <button class="btn btn-danger" id="clear-history-btn">🗑️ 清除歷史記錄</button>
   </div>
 
@@ -111,7 +115,11 @@
     <code>falco_rule_refs</code> 中，有對應且已啟用的 Falco 規則
     （見 <code>falco/README.md</code> 第 2 節對照表），曾在任一次執行中被
     實際命中的比例；滑鼠移到長條上可看到已觸發的規則名稱。<code>—</code>
-    代表該場景沒有對應的可量測規則，或尚未執行過。<br><br>
+    代表該場景沒有對應的可量測規則，或尚未執行過。
+    <strong>偵測延遲</strong>是該場景所有「曾命中可量測規則」的執行中，
+    從 <code>POST /api/lab/runs</code> 發起時間到第一筆對應 Falco 告警送達
+    lab-api 的時間差平均值——兩端時間都採用 lab-api 自己的時鐘，避免
+    Falco container 與 lab-api 之間的時鐘飄移影響量測。<br><br>
     2026-06-14：把 <code>escape-falco</code> 接進常駐 stack 後，先前記錄
     「container context 解析不到、規則不會觸發」的案例（room6 的
     <code>Docker Socket Accessed From Container</code>、
@@ -138,13 +146,42 @@
           <th>平均耗時</th>
           <th>Falco 偵測率</th>
           <th>規則覆蓋率</th>
+          <th>偵測延遲</th>
           <th>最後執行</th>
         </tr>
       </thead>
       <tbody>
-        <tr><td colspan="9" class="text-dim">載入中…</td></tr>
+        <tr><td colspan="10" class="text-dim">載入中…</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="section-title">⚙️ Falco 資源開銷（RQ3 代理量測）</div>
+  <p class="subtitle" style="margin-bottom: 0.75rem;">
+    沒有 Raspberry Pi 時，以 x86 環境的 <code>docker stats</code> 快照量化
+    「啟用 Falco 規則式偵測」相對於 <code>lab-api</code>/<code>room-manager</code>
+    這類常駐服務的額外資源開銷，作為邊緣裝置部署成本的代理指標。
+  </p>
+  <div class="card">
+    <div class="toolbar" style="margin-bottom: 0.5rem;">
+      <button class="btn" id="refresh-resource-btn">🔄 重新整理</button>
+    </div>
+    <table id="resource-table">
+      <thead>
+        <tr>
+          <th>容器</th>
+          <th>CPU</th>
+          <th>記憶體 %</th>
+          <th>記憶體用量</th>
+          <th>網路 I/O</th>
+          <th>PIDs</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="6" class="text-dim">載入中…</td></tr>
+      </tbody>
+    </table>
+    <div class="dim-cell" id="resource-collected-at" style="margin-top: 0.5rem; font-size: 0.74rem;"></div>
   </div>
 </div>
 
@@ -176,6 +213,12 @@ function ruleCoverageCell(m) {
       <div class="rate-text">${pct}%</div>
     </div>
   `;
+}
+
+function formatLatency(ms) {
+  if (ms == null) return '<span class="dim-cell" title="此場景沒有對應且已啟用的 Falco 規則，或尚未觀察到命中">—</span>';
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${ms} ms`;
 }
 
 function formatTime(iso) {
@@ -221,13 +264,83 @@ async function loadAnalytics() {
         <td class="num-cell ${m.avg_duration_ms == null ? 'dim-cell' : ''}">${m.avg_duration_ms != null ? m.avg_duration_ms + ' ms' : '—'}</td>
         <td>${rateCell(m.detection_rate)}</td>
         <td>${ruleCoverageCell(m)}</td>
+        <td class="num-cell ${m.avg_detection_latency_ms == null ? 'dim-cell' : ''}">${formatLatency(m.avg_detection_latency_ms)}</td>
         <td style="font-size:0.74rem">${formatTime(m.last_run_at)}</td>
       </tr>
     `).join('');
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="9" class="text-red">載入失敗：${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="text-red">載入失敗：${e.message}</td></tr>`;
   }
 }
+
+async function waitForRunCompletion(runId) {
+  while (true) {
+    const run = await apiFetch(`/lab/runs/${encodeURIComponent(runId)}`);
+    if (run.status && run.status !== 'starting' && run.status !== 'running') return run;
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+
+document.getElementById('run-all-baselines-btn').addEventListener('click', async () => {
+  if (!window.confirm('將依序對 15 個場景各執行一次 20 秒的 Baseline（不執行攻擊，只收集 Falco 告警），全部約需數分鐘，期間請勿關閉此頁面。是否繼續？')) return;
+
+  const btn = document.getElementById('run-all-baselines-btn');
+  const progress = document.getElementById('baseline-progress');
+  btn.disabled = true;
+  try {
+    const scenarios = await apiFetch('/lab/scenarios');
+    for (let i = 0; i < scenarios.length; i++) {
+      const s = scenarios[i];
+      progress.textContent = `(${i + 1}/${scenarios.length}) ${s.id} baseline 執行中…`;
+      const run = await apiFetch('/lab/baseline-runs', {
+        method: 'POST',
+        body: JSON.stringify({ scenario_id: s.id }),
+      });
+      await waitForRunCompletion(run.id);
+    }
+    progress.textContent = '全部 baseline 已完成';
+    toast('15 個場景的 Baseline 已全部執行完成', 'success');
+    loadAnalytics();
+  } catch (e) {
+    toast(`執行失敗：${e.message}`, 'error');
+    progress.textContent = '';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+async function loadResourceUsage() {
+  const tbody = document.querySelector('#resource-table tbody');
+  const collectedAt = document.getElementById('resource-collected-at');
+  try {
+    const data = await apiFetch('/lab/analytics/resource-usage');
+    collectedAt.textContent = `擷取時間：${new Date(data.collected_at).toLocaleString('zh-TW')}`;
+    tbody.innerHTML = data.containers.map((c) => {
+      if (c.error) {
+        return `<tr><td>${c.name}</td><td colspan="5" class="dim-cell">無法取得（${c.error}）</td></tr>`;
+      }
+      return `
+        <tr>
+          <td>${c.name}</td>
+          <td class="num-cell">${c.cpu_percent != null ? c.cpu_percent.toFixed(2) + '%' : '—'}</td>
+          <td class="num-cell">${c.mem_percent != null ? c.mem_percent.toFixed(2) + '%' : '—'}</td>
+          <td class="num-cell">${c.mem_usage || '—'}</td>
+          <td class="num-cell">${c.net_io || '—'}</td>
+          <td class="num-cell">${c.pids != null ? c.pids : '—'}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (e) {
+    collectedAt.textContent = '';
+    if (e.message === 'docker stats unavailable') {
+      tbody.innerHTML = '<tr><td colspan="6" class="dim-cell">此環境未提供資源用量資料（lab-api 未設定 docker stats）</td></tr>';
+      return;
+    }
+    tbody.innerHTML = `<tr><td colspan="6" class="text-red">載入失敗：${e.message}</td></tr>`;
+  }
+}
+
+document.getElementById('refresh-resource-btn').addEventListener('click', loadResourceUsage);
 
 document.getElementById('clear-history-btn').addEventListener('click', async () => {
   if (!window.confirm('確定要清除所有歷史執行記錄嗎？此操作無法復原，會清空 detection-matrix 的所有統計資料。')) return;
@@ -241,6 +354,7 @@ document.getElementById('clear-history-btn').addEventListener('click', async () 
 });
 
 loadAnalytics();
+loadResourceUsage();
 </script>
 </body>
 </html>

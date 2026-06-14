@@ -29,7 +29,7 @@
     .scenario-id { font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono); }
     .scenario-outcome { font-size: 0.78rem; color: var(--text-dim); flex-grow: 1; }
     .scenario-refs { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-    .scenario-actions { display: flex; justify-content: flex-end; }
+    .scenario-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 
     table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
     th { text-align:left; padding: 0.4rem 0.6rem; font-size:0.7rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); border-bottom:1px solid var(--border); }
@@ -89,12 +89,16 @@ async function loadScenarios() {
         </div>
         <div class="scenario-outcome">${s.expected_outcome}</div>
         <div class="scenario-actions">
+          <button class="btn baseline-btn" data-scenario-id="${s.id}" title="不執行攻擊，靜置 20 秒收集 Falco 告警，用於計算誤報率（false_positive_rate）">🔬 Baseline (20s)</button>
           <button class="btn btn-primary run-btn" data-scenario-id="${s.id}">▶ 執行</button>
         </div>
       </div>
     `).join('');
     grid.querySelectorAll('.run-btn').forEach((btn) => {
       btn.addEventListener('click', () => runScenario(btn.dataset.scenarioId, btn));
+    });
+    grid.querySelectorAll('.baseline-btn').forEach((btn) => {
+      btn.addEventListener('click', () => runBaseline(btn.dataset.scenarioId, btn));
     });
   } catch (e) {
     grid.innerHTML = `<p class="text-red">載入場景失敗：${e.message}</p>`;
@@ -114,6 +118,22 @@ async function runScenario(scenarioId, btn) {
     toast(`執行失敗：${e.message}`, 'error');
     btn.disabled = false;
     btn.textContent = '▶ 執行';
+  }
+}
+
+async function runBaseline(scenarioId, btn) {
+  btn.disabled = true;
+  btn.textContent = '啟動中…';
+  try {
+    const run = await apiFetch('/lab/baseline-runs', {
+      method: 'POST',
+      body: JSON.stringify({ scenario_id: scenarioId }),
+    });
+    window.location.href = `run.html?id=${encodeURIComponent(run.id)}`;
+  } catch (e) {
+    toast(`Baseline 執行失敗：${e.message}`, 'error');
+    btn.disabled = false;
+    btn.textContent = '🔬 Baseline (20s)';
   }
 }
 

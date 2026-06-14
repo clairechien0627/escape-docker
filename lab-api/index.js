@@ -7,6 +7,7 @@ const { createRoomManagerClient } = require('./lib/room-manager-client');
 const { runExploitScript } = require('./lib/runner');
 const { createRunManager } = require('./lib/run-manager');
 const { attachRunStream } = require('./lib/ws-stream');
+const { createDockerStats } = require('./lib/docker-stats');
 
 const PORT = process.env.PORT || 4100;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin_dev_token';
@@ -28,10 +29,17 @@ const runManager = createRunManager({
   labDir: LAB_DIR,
 });
 
+const dockerStats = createDockerStats();
+// RQ3 代理量測（無 Raspberry Pi 時，以 x86 環境量化 Falco 規則式偵測的
+// 額外資源開銷）：比較 escape-falco 與其他常駐服務的 CPU/記憶體用量。
+const RESOURCE_USAGE_CONTAINERS = ['escape-falco', 'lab-api', 'room-manager'];
+
 const app = createApp({
   scenarios,
   db,
   runManager,
+  dockerStats,
+  resourceUsageContainers: RESOURCE_USAGE_CONTAINERS,
 });
 
 const server = http.createServer(app);

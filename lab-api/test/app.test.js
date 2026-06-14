@@ -4,6 +4,7 @@ const path = require('node:path');
 const request = require('supertest');
 const { createApp } = require('../lib/app');
 const { createRunManager } = require('../lib/run-manager');
+const { createDockerStats } = require('../lib/docker-stats');
 
 const SCENARIOS = [
   {
@@ -89,7 +90,8 @@ function buildApp(overrides = {}) {
   const db = overrides.db || fakeDb();
   const roomManagerClient = overrides.roomManagerClient || fakeRoomManagerClient();
   const fakeExploit = overrides.fakeExploit || fakeRunExploit();
-  const scenarioById = new Map(SCENARIOS.map((s) => [s.id, s]));
+  const scenarios = overrides.scenarios || SCENARIOS;
+  const scenarioById = new Map(scenarios.map((s) => [s.id, s]));
 
   const runManager = overrides.runManager || createRunManager({
     scenarioById,
@@ -100,9 +102,11 @@ function buildApp(overrides = {}) {
   });
 
   const app = createApp({
-    scenarios: SCENARIOS,
+    scenarios,
     db,
     runManager,
+    dockerStats: overrides.dockerStats,
+    resourceUsageContainers: overrides.resourceUsageContainers,
   });
 
   return { app, db, roomManagerClient, fakeExploit, runManager };
@@ -166,6 +170,44 @@ test('POST /api/lab/runs returns 202 immediately and the run finishes asynchrono
   assert.strictEqual(db.runs.length, 1);
   assert.strictEqual(db.runs[0].id, res.body.id);
   assert.strictEqual(db.runs[0].status, 'success');
+});
+
+test('POST /api/lab/baseline-runs with unknown scenario_id returns 404', async () => {
+  const { app } = buildApp();
+
+  const res = await request(app)
+    .post('/api/lab/baseline-runs')
+    .send({ scenario_id: 'does-not-exist' });
+
+  assert.strictEqual(res.status, 404);
+});
+
+test('POST /api/lab/baseline-runs idles without running an exploit and records alerts as type: "baseline"', async () => {
+  const { app, db, roomManagerClient, fakeExploit, runManager } = buildApp();
+
+  const res = await request(app)
+    .post('/api/lab/baseline-runs')
+    .send({ scenario_id: 'room2', duration_ms: 10 });
+
+  assert.strictEqual(res.status, 202);
+  assert.strictEqual(res.body.scenario_id, 'room2');
+  assert.strictEqual(res.body.type, 'baseline');
+
+  const run = runManager.get(res.body.id);
+  // baseline run 的 status 在等待期間是 'starting'/'running'，notifyAlert
+  // 一樣會記錄到這個 run
+  runManager.notifyAlert({ received_at: new Date().toISOString(), alert: { rule: 'Sudo Exec Of Backup Script' } });
+
+  await waitForResult(run);
+
+  assert.strictEqual(db.runs.length, 1);
+  assert.strictEqual(db.runs[0].type, 'baseline');
+  assert.strictEqual(db.runs[0].status, 'completed');
+  assert.strictEqual(db.runs[0].duration_ms, 10);
+  assert.deepStrictEqual(db.runs[0].alert_rule_counts, { 'Sudo Exec Of Backup Script': 1 });
+  // 沒有執行任何 exploit script，但前後各 reset 一次房間
+  assert.deepStrictEqual(fakeExploit.calls, []);
+  assert.deepStrictEqual(roomManagerClient.calls, ['room2', 'room2']);
 });
 
 test('GET /api/lab/runs/:id reflects live progress while running, then the stored result once finished', async () => {
@@ -332,6 +374,181 @@ test('GET /api/lab/analytics/detection-matrix prefers alert_rule_counts over the
   assert.deepStrictEqual(room2.triggered_rules, ['Sudo Exec Of Backup Script']);
 });
 
+test('GET /api/lab/analytics/detection-matrix computes avg_detection_latency_ms from the first measurable alert', async () => {
+  const { app, db } = buildApp();
+
+  // 'DAC Read Search Capability Used' 不是 room2 的 measurable 規則
+  // （falco_rule_refs 只有 sudo_exec_backup_script -> 'Sudo Exec Of
+  // Backup Script'），所以延遲以第二筆 alert 為準：3000ms
+  db.insert({
+    id: 'room2-1',
+    scenario_id: 'room2',
+    status: 'success',
+    flag_found: 'EscapeDocker{a}',
+    duration_ms: 1000,
+    started_at: '2026-06-14T09:06:00.000Z',
+    alerts: [
+      { received_at: '2026-06-14T09:06:01.500Z', alert: { rule: 'DAC Read Search Capability Used' } },
+      { received_at: '2026-06-14T09:06:03.000Z', alert: { rule: 'Sudo Exec Of Backup Script' } },
+    ],
+    finished_at: '2026-06-14T09:06:09.839Z',
+  });
+
+  // 第二次 run：第一筆 alert 即命中，延遲 5000ms
+  db.insert({
+    id: 'room2-2',
+    scenario_id: 'room2',
+    status: 'success',
+    flag_found: 'EscapeDocker{a}',
+    duration_ms: 1000,
+    started_at: '2026-06-14T09:10:00.000Z',
+    alerts: [
+      { received_at: '2026-06-14T09:10:05.000Z', alert: { rule: 'Sudo Exec Of Backup Script' } },
+    ],
+    finished_at: '2026-06-14T09:10:09.839Z',
+  });
+
+  const res = await request(app).get('/api/lab/analytics/detection-matrix');
+
+  const room2 = res.body.find((r) => r.scenario_id === 'room2');
+  assert.strictEqual(room2.avg_detection_latency_ms, 4000);
+});
+
+test('GET /api/lab/analytics/detection-matrix returns null avg_detection_latency_ms when no measurable alert occurred', async () => {
+  const { app, db } = buildApp();
+
+  db.insert({
+    id: 'room2-1',
+    scenario_id: 'room2',
+    status: 'success',
+    flag_found: 'EscapeDocker{a}',
+    duration_ms: 1000,
+    started_at: '2026-06-14T09:06:00.000Z',
+    alerts: [],
+    finished_at: '2026-06-14T09:06:09.839Z',
+  });
+
+  // room3 falco_rule_refs 為空，measurable.length === 0，恆為 null
+  db.insert({
+    id: 'room3-1',
+    scenario_id: 'room3',
+    status: 'success',
+    flag_found: 'EscapeDocker{a}',
+    duration_ms: 1000,
+    started_at: '2026-06-14T09:06:00.000Z',
+    alerts: [{ received_at: '2026-06-14T09:06:01.000Z', alert: { rule: 'Some Other Rule' } }],
+    finished_at: '2026-06-14T09:06:09.839Z',
+  });
+
+  const res = await request(app).get('/api/lab/analytics/detection-matrix');
+
+  const room2 = res.body.find((r) => r.scenario_id === 'room2');
+  assert.strictEqual(room2.avg_detection_latency_ms, null);
+
+  const room3 = res.body.find((r) => r.scenario_id === 'room3');
+  assert.strictEqual(room3.avg_detection_latency_ms, null);
+});
+
+test('GET /api/lab/analytics/detection-matrix separates baseline runs into false_positive_rate / baseline_* fields', async () => {
+  const { app, db } = buildApp();
+
+  // 一般 run：room2 確實命中 Sudo Exec Of Backup Script
+  db.insert({
+    id: 'room2-1',
+    scenario_id: 'room2',
+    status: 'success',
+    flag_found: 'EscapeDocker{a}',
+    duration_ms: 1000,
+    alerts: [{ alert: { rule: 'Sudo Exec Of Backup Script' } }],
+    alert_rule_counts: { 'Sudo Exec Of Backup Script': 1 },
+    finished_at: '2026-06-14T09:06:09.839Z',
+  });
+
+  // baseline run：靜置 20 秒沒有攻擊，但同一條規則仍觸發了 2 次 -> 誤報候選
+  db.insert({
+    id: 'baseline-room2-1',
+    scenario_id: 'room2',
+    type: 'baseline',
+    status: 'completed',
+    duration_ms: 20000,
+    alert_rule_counts: { 'Sudo Exec Of Backup Script': 2 },
+  });
+
+  const res = await request(app).get('/api/lab/analytics/detection-matrix');
+
+  const room2 = res.body.find((r) => r.scenario_id === 'room2');
+  // baseline run 不計入一般執行統計
+  assert.strictEqual(room2.runs, 1);
+  assert.strictEqual(room2.success_rate, 1);
+
+  assert.strictEqual(room2.baseline_runs, 1);
+  assert.strictEqual(room2.baseline_duration_ms, 20000);
+  assert.strictEqual(room2.baseline_alerts_total, 2);
+  assert.strictEqual(room2.baseline_alert_rate_per_min, 6);
+  assert.deepStrictEqual(room2.false_positive_rules, ['Sudo Exec Of Backup Script']);
+  assert.strictEqual(room2.false_positive_rate, 1);
+});
+
+test('GET /api/lab/analytics/detection-matrix deduplicates falco_rule_refs that map to the same Falco rule', async () => {
+  // room0 實際設定：read_etc_motd 與 read_hint_file 都對應同一條 Falco
+  // 規則 'Baseline Read Of Motd Or Hint File'，measurableFalcoRules 若不
+  // 去重，rule_coverage/false_positive_rate 的分母會被重複計入，
+  // false_positive_rules 也會出現重複項目。
+  const scenarios = [{
+    id: 'room0',
+    title: 'Root 密碼弱密碼',
+    vuln_type: 'weak-password',
+    container: 'room0',
+    exploit_script: 'exploits/room0.sh',
+    expected_outcome: '...',
+    falco_rule_refs: ['read_etc_motd', 'read_hint_file'],
+    exploit_steps: ['...'],
+  }];
+
+  const { app, db } = buildApp({ scenarios });
+
+  db.insert({
+    id: 'room0-1',
+    scenario_id: 'room0',
+    status: 'success',
+    duration_ms: 1000,
+    alert_rule_counts: { 'Baseline Read Of Motd Or Hint File': 1 },
+    finished_at: '2026-06-14T09:06:09.839Z',
+  });
+  db.insert({
+    id: 'baseline-room0-1',
+    scenario_id: 'room0',
+    type: 'baseline',
+    status: 'completed',
+    duration_ms: 20000,
+    alert_rule_counts: { 'Baseline Read Of Motd Or Hint File': 1 },
+  });
+
+  const res = await request(app).get('/api/lab/analytics/detection-matrix');
+  const room0 = res.body.find((r) => r.scenario_id === 'room0');
+
+  assert.strictEqual(room0.rule_coverage, 1);
+  assert.deepStrictEqual(room0.triggered_rules, ['Baseline Read Of Motd Or Hint File']);
+  assert.deepStrictEqual(room0.false_positive_rules, ['Baseline Read Of Motd Or Hint File']);
+  assert.strictEqual(room0.false_positive_rate, 1);
+});
+
+test('GET /api/lab/analytics/detection-matrix returns null/zero baseline fields when no baseline run exists', async () => {
+  const { app, db } = buildApp();
+
+  db.insert({ id: 'room2-1', scenario_id: 'room2', status: 'success', flag_found: 'EscapeDocker{a}', duration_ms: 1000, alerts: [], finished_at: '2026-06-14T09:06:09.839Z' });
+
+  const res = await request(app).get('/api/lab/analytics/detection-matrix');
+
+  const room2 = res.body.find((r) => r.scenario_id === 'room2');
+  assert.strictEqual(room2.baseline_runs, 0);
+  assert.strictEqual(room2.baseline_duration_ms, 0);
+  assert.strictEqual(room2.baseline_alerts_total, 0);
+  assert.strictEqual(room2.baseline_alert_rate_per_min, null);
+  assert.deepStrictEqual(room2.false_positive_rules, []);
+  assert.strictEqual(room2.false_positive_rate, null);
+});
+
 test('GET /api/lab/analytics/detection-matrix treats runs without an alerts field as not detected', async () => {
   const { app, db } = buildApp();
 
@@ -342,6 +559,40 @@ test('GET /api/lab/analytics/detection-matrix treats runs without an alerts fiel
   const room2 = res.body.find((r) => r.scenario_id === 'room2');
   assert.strictEqual(room2.runs, 1);
   assert.strictEqual(room2.detection_rate, 0);
+});
+
+test('GET /api/lab/analytics/resource-usage returns 501 when docker stats is not configured', async () => {
+  const { app } = buildApp();
+
+  const res = await request(app).get('/api/lab/analytics/resource-usage');
+
+  assert.strictEqual(res.status, 501);
+});
+
+test('GET /api/lab/analytics/resource-usage returns normalized docker stats for the configured containers', async () => {
+  const execImpl = (cmd, args, opts, cb) => {
+    const name = args[args.length - 1];
+    if (name === 'escape-falco') {
+      return cb(null, `${JSON.stringify({ CPUPerc: '3.21%', MemUsage: '85MiB / 1.9GiB', MemPerc: '4.37%', NetIO: '1.2kB / 0B', BlockIO: '0B / 0B', PIDs: '12' })}\n`, '');
+    }
+    return cb(new Error('Error: No such container: room-manager'));
+  };
+  const dockerStats = createDockerStats({ execImpl });
+  const { app } = buildApp({ dockerStats, resourceUsageContainers: ['escape-falco', 'room-manager'] });
+
+  const res = await request(app).get('/api/lab/analytics/resource-usage');
+
+  assert.strictEqual(res.status, 200);
+  assert.ok(res.body.collected_at);
+
+  const falco = res.body.containers.find((c) => c.name === 'escape-falco');
+  assert.strictEqual(falco.cpu_percent, 3.21);
+  assert.strictEqual(falco.mem_percent, 4.37);
+  assert.strictEqual(falco.mem_usage, '85MiB / 1.9GiB');
+  assert.strictEqual(falco.pids, 12);
+
+  const roomManagerStat = res.body.containers.find((c) => c.name === 'room-manager');
+  assert.strictEqual(roomManagerStat.error, 'unavailable');
 });
 
 test('Falco webhook forwards alerts to currently-running runs', async () => {

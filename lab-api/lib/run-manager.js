@@ -96,6 +96,77 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
     return run;
   }
 
+  // 「誤報率」基準測試（RQ2）：不執行任何 exploit，只 reset 房間後靜置
+  // durationMs，記錄這段時間內收到的 Falco 告警。與 startRun 共用
+  // notifyAlert 機制（同樣依賴 run.status 為 'starting'/'running'）；
+  // 寫入 db 的記錄帶 type: 'baseline'，detection-matrix 會將其與一般
+  // 執行記錄分開統計，用來判斷哪些規則在「沒有攻擊」時也會觸發
+  // （誤報候選）。
+  function startBaselineRun(scenarioId, durationMs) {
+    const scenario = scenarioById.get(scenarioId);
+    if (!scenario) return null;
+
+    const id = `baseline-${scenarioId}-${Date.now()}`;
+    const emitter = new EventEmitter();
+    const run = {
+      id,
+      scenario_id: scenarioId,
+      type: 'baseline',
+      status: 'starting',
+      started_at: new Date().toISOString(),
+      finished_at: null,
+      steps: [],
+      alerts: [],
+      alert_rule_counts: {},
+      result: null,
+      error: null,
+      emitter,
+    };
+    runs.set(id, run);
+
+    (async () => {
+      try {
+        await roomManagerClient.reset(scenario.container);
+
+        run.status = 'running';
+        emitter.emit('status', { type: 'status', status: 'running' });
+
+        await new Promise((resolve) => setTimeout(resolve, durationMs));
+
+        // 跑完後盡力把房間重置回乾淨狀態，供下次實驗使用；失敗不影響本次結果
+        roomManagerClient.reset(scenario.container).catch((err) => {
+          console.error(`[lab-api] post-baseline reset of ${scenario.container} failed: ${err.message}`);
+        });
+
+        const finished = {
+          id,
+          scenario_id: scenarioId,
+          type: 'baseline',
+          started_at: run.started_at,
+          finished_at: new Date().toISOString(),
+          status: 'completed',
+          duration_ms: durationMs,
+          alerts: run.alerts,
+          alert_rule_counts: run.alert_rule_counts,
+        };
+
+        run.status = finished.status;
+        run.finished_at = finished.finished_at;
+        run.result = finished;
+
+        db.insert(finished);
+        emitter.emit('result', { type: 'result', ...finished });
+      } catch (err) {
+        run.status = 'error';
+        run.finished_at = new Date().toISOString();
+        run.error = err.message;
+        emitter.emit('error', { type: 'error', error: err.message });
+      }
+    })();
+
+    return run;
+  }
+
   function get(id) {
     return runs.get(id);
   }
@@ -119,7 +190,7 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
     }
   }
 
-  return { startRun, get, notifyAlert };
+  return { startRun, startBaselineRun, get, notifyAlert };
 }
 
 module.exports = { createRunManager };

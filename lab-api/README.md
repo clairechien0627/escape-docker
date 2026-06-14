@@ -12,12 +12,14 @@ Edge Container Security Lab 的執行引擎（Phase 2 核心 + Phase 3 即時串
 | `GET` | `/api/lab/scenarios` | 列出 15 個場景的中繼資料（精簡版） |
 | `GET` | `/api/lab/scenarios/:id` | 單一場景完整內容（含 `exploit_steps`、`falco_rule_refs` 等） |
 | `POST` | `/api/lab/runs` | **非同步**啟動一次實驗：body `{ "scenario_id": "room2" }`，無需登入，立即回傳 `202` + run 物件（`status: "starting"`） |
-| `GET` | `/api/lab/runs` | 歷史執行列表（可用 `?scenario_id=` 篩選），由新到舊 |
+| `POST` | `/api/lab/baseline-runs` | **Phase 8**：誤報率基準測試，body `{ "scenario_id": "room2", "duration_ms"?: 20000 }`。不執行 exploit，只 reset 房間後靜置 `duration_ms`（預設 20000ms）收集 Falco 告警，回傳 `202` + run 物件（`type: "baseline"`） |
+| `GET` | `/api/lab/runs` | 歷史執行列表（可用 `?scenario_id=` 篩選），由新到舊；每筆含 `type`（`"exploit"` 或 `"baseline"`） |
 | `GET` | `/api/lab/runs/:id` | 單次執行詳情（進行中回傳即時狀態，結束後回傳完整結果，含每個 step 的輸出） |
 | `GET` (WS) | `/api/lab/runs/:id/stream` | **Phase 3**：即時串流該次執行的 `status`/`step`/`result`/`alert`/`error` 事件（JSON，每則一行） |
 | `POST` | `/api/lab/falco-webhook` | Falco `http_output` 的目標端點，記錄最近的告警並轉發給目前執行中的 run |
 | `GET` | `/api/lab/alerts` | 查看最近收到的 Falco 告警（除錯用，記憶體內，重啟即清空） |
-| `GET` | `/api/lab/analytics/detection-matrix` | **Phase 5**：依場景彙整歷史執行的成功率、FLAG 取得率、平均耗時、Falco 偵測率與規則覆蓋率 `rule_coverage`（RQ2） |
+| `GET` | `/api/lab/analytics/detection-matrix` | **Phase 5/8**：依場景彙整歷史執行的成功率、FLAG 取得率、平均耗時、Falco 偵測率、規則覆蓋率 `rule_coverage`、偵測延遲 `avg_detection_latency_ms`，以及來自 baseline run 的誤報率 `false_positive_rate`（RQ2，詳見下方說明） |
+| `GET` | `/api/lab/analytics/resource-usage` | **Phase 8 / RQ3 代理量測**：`docker stats --no-stream` 快照（`escape-falco`/`lab-api`/`room-manager`），量化 Falco 規則式偵測的額外資源開銷 |
 
 ## `POST /api/lab/runs` 流程（非同步，Phase 3）
 
@@ -49,6 +51,47 @@ Edge Container Security Lab 的執行引擎（Phase 2 核心 + Phase 3 即時串
 `{"type":"result",...}` 並關閉連線。若仍在執行中，則持續推送後續的
 `step`/`result`/`alert`/`error` 事件，直到 `result`/`error` 出現後關閉。
 `alert` 事件來自 `/api/lab/falco-webhook`（見下方限制）。
+
+## Phase 8：偵測延遲 / 誤報率 baseline / 資源開銷（RQ2/RQ3）
+
+沒有 Raspberry Pi 可用時，以下三個指標把現有的 x86 環境資料拉得更完整：
+
+- **偵測延遲 `avg_detection_latency_ms`**：對每次 run，找出第一筆
+  `alert.rule` 屬於該場景 `measurableFalcoRules` 的告警，計算
+  `alert.received_at - run.started_at`（兩者皆為 lab-api 自己的時鐘，
+  避免 `escape-falco` container 與 lab-api 之間的時鐘飄移），取所有
+  「曾命中」的 run 的平均值；若該場景從未命中任何 measurable 規則則為
+  `null`。
+- **誤報率 `false_positive_rate` / baseline run**：`POST
+  /api/lab/baseline-runs` 不執行任何 exploit，只 reset 房間後靜置
+  `duration_ms`（預設 20000ms）收集 Falco 告警，寫入
+  `data/runs.json` 時帶 `type: "baseline"`。
+  `/api/lab/analytics/detection-matrix` 會把 `type: "baseline"` 的紀錄
+  與一般執行分開統計，新增：
+  - `baseline_runs` / `baseline_duration_ms` / `baseline_alerts_total`：
+    該場景累積執行過幾次 baseline、總靜置時長、收到的告警總數
+  - `baseline_alert_rate_per_min`：`baseline_alerts_total /
+    (baseline_duration_ms / 60000)`，無 baseline run 時為 `null`
+  - `false_positive_rules`：該場景 `measurableFalcoRules` 中，曾在
+    baseline（無攻擊）期間也觸發過的規則名稱
+  - `false_positive_rate`：`false_positive_rules.length /
+    measurableFalcoRules.length`（需至少跑過一次 baseline，否則為
+    `null`）
+
+  `frontend/lab/index.html` 每個場景卡片新增「🔬 Baseline (20s)」按鈕；
+  `frontend/lab/analytics.html` 新增「🔬 執行全部 Baseline (15×20s)」
+  依序觸發 15 個場景。
+
+- **資源開銷 `GET /api/lab/analytics/resource-usage`（RQ3 代理量測）**：
+  透過 lab-api 掛載的 `/var/run/docker.sock` + `docker-cli`（見
+  `Dockerfile`）對 `escape-falco`/`lab-api`/`room-manager` 執行
+  `docker stats --no-stream --format '{{json .}}'`（`lib/docker-stats.js`），
+  回傳 `{ collected_at, containers: [{ name, cpu_percent, mem_usage,
+  mem_percent, net_io, block_io, pids }] }`。單台 x86 機器上的瞬時快照
+  無法直接換算成 Raspberry Pi 的實際數字，但 `escape-falco` 相對其他
+  常駐服務的額外開銷比例，可作為「在邊緣裝置上啟用規則式偵測的成本」
+  的代理指標（若該 container 不存在則該項回傳
+  `{ name, error: "unavailable" }`，整支 API 仍回 `200`）。
 
 ## 環境變數
 
