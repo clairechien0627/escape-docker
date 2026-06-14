@@ -31,6 +31,27 @@
     .scenario-refs { display: flex; flex-wrap: wrap; gap: 0.3rem; }
     .scenario-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 
+    .toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .toolbar .hint { font-size: 0.78rem; color: var(--text-dim); margin-right: auto; }
+
+    .scenario-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+    }
+    .scenario-stats .stat-pill {
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      white-space: nowrap;
+    }
+    .scenario-stats .stat-pill.good { color: var(--green); border-color: var(--green); }
+    .scenario-stats .stat-pill.mid  { color: var(--yellow); border-color: var(--yellow); }
+    .scenario-stats .stat-pill.bad  { color: var(--red); border-color: var(--red); }
+
     table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
     th { text-align:left; padding: 0.4rem 0.6rem; font-size:0.7rem; text-transform:uppercase; letter-spacing:1px; color:var(--text-muted); border-bottom:1px solid var(--border); }
     td { padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--bg-hover); }
@@ -56,6 +77,13 @@
   <h1>🧪 Edge Container Security Lab</h1>
   <p class="subtitle">每個情境模擬一種容器逃逸／提權手法：選擇情境並執行，即可即時觀察攻擊腳本的每一步，以及對應的 Falco 告警。</p>
 
+  <div class="toolbar">
+    <span class="hint">批次操作會依序對 15 個場景執行，期間請勿關閉此頁面</span>
+    <span id="bulk-progress" class="dim-cell" style="font-size: 0.78rem; align-self: center;"></span>
+    <button class="btn" id="run-all-baselines-btn" title="依序對 15 個場景各執行一次 20 秒的 Baseline（不執行攻擊，只收集 Falco 告警），用於計算誤報率（false_positive_rate），結果可在「📈 分析」頁查看">🔬 執行全部 Baseline (15×20s)</button>
+    <button class="btn btn-primary" id="run-all-scenarios-btn" title="依序對 15 個場景各執行一次完整 exploit">▶ 執行全部場景 (15)</button>
+  </div>
+
   <div class="section-title">📋 場景目錄</div>
   <div class="scenario-grid" id="scenario-grid">
     <p class="text-dim">載入中…</p>
@@ -75,10 +103,52 @@
 <div id="toast-container"></div>
 <script src="../js/api.js"></script>
 <script>
+function pct(rate) {
+  return rate == null ? null : Math.round(rate * 100);
+}
+
+function pillClass(p, { invert = false } = {}) {
+  if (p == null) return '';
+  const good = invert ? p <= 20 : p >= 70;
+  const bad = invert ? p >= 60 : p < 30;
+  if (good) return 'good';
+  if (bad) return 'bad';
+  return 'mid';
+}
+
+function formatLatencyShort(ms) {
+  if (ms == null) return '—';
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+// 場景卡片下方的「上次結果」摘要：來自 GET /lab/analytics/detection-matrix，
+// 讓使用者不用切到「📈 分析」頁就能看出哪些場景已經跑過、偵測效果如何。
+function statsRow(m) {
+  if (!m || m.runs === 0) {
+    return '<div class="scenario-stats dim-cell">尚未執行過</div>';
+  }
+  const detection = pct(m.detection_rate);
+  const coverage = pct(m.rule_coverage);
+  const fp = pct(m.false_positive_rate);
+  const parts = [
+    `<span class="stat-pill" title="執行次數">▶ ${m.runs} 次</span>`,
+    `<span class="stat-pill ${pillClass(detection)}" title="Falco 偵測率：該次執行期間是否收到任一告警">🛰 偵測 ${detection == null ? '—' : detection + '%'}</span>`,
+    `<span class="stat-pill ${pillClass(coverage)}" title="規則覆蓋率：falco_rule_refs 中實際被命中的比例">📐 覆蓋 ${coverage == null ? '—' : coverage + '%'}</span>`,
+    `<span class="stat-pill" title="偵測延遲：從發起執行到第一筆對應告警送達的時間">⏱ ${formatLatencyShort(m.avg_detection_latency_ms)}</span>`,
+    `<span class="stat-pill ${pillClass(fp, { invert: true })}" title="誤報率：${m.baseline_runs ? `${m.false_positive_rules.join('、') || '無誤報規則'}（已跑 ${m.baseline_runs} 次 Baseline）` : '尚未執行過 Baseline'}">⚠ 誤報 ${fp == null ? '—' : fp + '%'}</span>`,
+  ];
+  return `<div class="scenario-stats">${parts.join('')}</div>`;
+}
+
 async function loadScenarios() {
   const grid = document.getElementById('scenario-grid');
   try {
-    const scenarios = await apiFetch('/lab/scenarios');
+    const [scenarios, matrix] = await Promise.all([
+      apiFetch('/lab/scenarios'),
+      apiFetch('/lab/analytics/detection-matrix').catch(() => []),
+    ]);
+    const matrixById = new Map(matrix.map((m) => [m.scenario_id, m]));
+
     grid.innerHTML = scenarios.map((s) => `
       <div class="scenario-card">
         <div class="scenario-id">${s.id} · ${s.container}</div>
@@ -88,6 +158,7 @@ async function loadScenarios() {
           ${(s.falco_rule_refs || []).map((r) => `<span class="badge badge-dim">${r}</span>`).join('')}
         </div>
         <div class="scenario-outcome">${s.expected_outcome}</div>
+        ${statsRow(matrixById.get(s.id))}
         <div class="scenario-actions">
           <button class="btn baseline-btn" data-scenario-id="${s.id}" title="不執行攻擊，靜置 20 秒收集 Falco 告警，用於計算誤報率（false_positive_rate）">🔬 Baseline (20s)</button>
           <button class="btn btn-primary run-btn" data-scenario-id="${s.id}">▶ 執行</button>
@@ -136,6 +207,70 @@ async function runBaseline(scenarioId, btn) {
     btn.textContent = '🔬 Baseline (20s)';
   }
 }
+
+async function waitForRunCompletion(runId) {
+  while (true) {
+    const run = await apiFetch(`/lab/runs/${encodeURIComponent(runId)}`);
+    if (run.status && run.status !== 'starting' && run.status !== 'running') return run;
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
+
+async function runAllSequentially({ button, otherButton, progress, endpoint, label, confirmMsg, doneMsg }) {
+  if (!window.confirm(confirmMsg)) return;
+  button.disabled = true;
+  otherButton.disabled = true;
+  try {
+    const scenarios = await apiFetch('/lab/scenarios');
+    for (let i = 0; i < scenarios.length; i++) {
+      const s = scenarios[i];
+      progress.textContent = `(${i + 1}/${scenarios.length}) ${s.id} ${label}…`;
+      const run = await apiFetch(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({ scenario_id: s.id }),
+      });
+      await waitForRunCompletion(run.id);
+    }
+    progress.textContent = doneMsg;
+    toast(doneMsg, 'success');
+    loadScenarios();
+    loadRuns();
+  } catch (e) {
+    toast(`執行失敗：${e.message}`, 'error');
+    progress.textContent = '';
+  } finally {
+    button.disabled = false;
+    otherButton.disabled = false;
+  }
+}
+
+document.getElementById('run-all-baselines-btn').addEventListener('click', () => {
+  const btn = document.getElementById('run-all-baselines-btn');
+  const other = document.getElementById('run-all-scenarios-btn');
+  runAllSequentially({
+    button: btn,
+    otherButton: other,
+    progress: document.getElementById('bulk-progress'),
+    endpoint: '/lab/baseline-runs',
+    label: 'baseline 執行中',
+    confirmMsg: '將依序對 15 個場景各執行一次 20 秒的 Baseline（不執行攻擊，只收集 Falco 告警），全部約需數分鐘，期間請勿關閉此頁面。是否繼續？',
+    doneMsg: '15 個場景的 Baseline 已全部執行完成',
+  });
+});
+
+document.getElementById('run-all-scenarios-btn').addEventListener('click', () => {
+  const btn = document.getElementById('run-all-scenarios-btn');
+  const other = document.getElementById('run-all-baselines-btn');
+  runAllSequentially({
+    button: btn,
+    otherButton: other,
+    progress: document.getElementById('bulk-progress'),
+    endpoint: '/lab/runs',
+    label: '執行中',
+    confirmMsg: '將依序對 15 個場景各執行一次完整 exploit，全部約需數分鐘，期間請勿關閉此頁面。是否繼續？',
+    doneMsg: '15 個場景已全部執行完成',
+  });
+});
 
 function statusLabel(status) {
   const map = {

@@ -58,7 +58,8 @@
     .rate-fill.bad  { background: var(--red); }
     .rate-text { font-size: 0.74rem; color: var(--text-dim); width: 38px; text-align: right; }
 
-    .toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .toolbar .hint { font-size: 0.78rem; color: var(--text-dim); margin-right: auto; }
 
     .section-title { font-size: 1rem; font-weight: 700; color: var(--text-main); margin: 1.5rem 0 0.75rem; }
   </style>
@@ -79,8 +80,8 @@
   <p class="subtitle">彙整 15 個場景的歷史執行結果：成功率、FLAG 取得率、平均耗時、Falco 偵測率、規則覆蓋率與偵測延遲（RQ2）。</p>
 
   <div class="toolbar">
-    <span id="baseline-progress" class="dim-cell" style="margin-right: 0.75rem; font-size: 0.78rem; align-self: center;"></span>
-    <button class="btn" id="run-all-baselines-btn" title="依序對 15 個場景各執行一次 20 秒的 Baseline（不執行攻擊，只收集 Falco 告警），用於計算誤報率">🔬 執行全部 Baseline (15×20s)</button>
+    <span class="hint">執行單一場景或批次執行 / Baseline，請至「🧪 Lab」頁面</span>
+    <a class="btn" href="index.html">🧪 前往 Lab 執行頁</a>
     <button class="btn btn-danger" id="clear-history-btn">🗑️ 清除歷史記錄</button>
   </div>
 
@@ -105,6 +106,14 @@
       <div class="summary-num" id="sum-rule-coverage">—</div>
       <div class="summary-label">平均規則覆蓋率</div>
     </div>
+    <div class="summary-card">
+      <div class="summary-num" id="sum-false-positive-rate">—</div>
+      <div class="summary-label">平均誤報率</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-num" id="sum-baseline-scenarios">0 / 15</div>
+      <div class="summary-label">已執行 Baseline 場景數</div>
+    </div>
   </div>
 
   <div class="note-box">
@@ -119,7 +128,16 @@
     <strong>偵測延遲</strong>是該場景所有「曾命中可量測規則」的執行中，
     從 <code>POST /api/lab/runs</code> 發起時間到第一筆對應 Falco 告警送達
     lab-api 的時間差平均值——兩端時間都採用 lab-api 自己的時鐘，避免
-    Falco container 與 lab-api 之間的時鐘飄移影響量測。<br><br>
+    Falco container 與 lab-api 之間的時鐘飄移影響量測。
+    <strong>誤報率</strong>來自 <code>POST /api/lab/baseline-runs</code>
+    （靜置 20 秒、不執行 exploit）：場景 <code>falco_rule_refs</code>
+    對應規則中，在「沒有任何攻擊行為」期間仍被觸發的比例，越低越好；
+    <code>—</code> 代表此場景尚未執行過 Baseline。下方「RQ2 對照」圖將
+    規則覆蓋率（橫軸）與誤報率（縱軸）畫成散佈圖，方便一次比較 15 個場景
+    在「有效偵測」與「不誤報」兩個目標上的取捨。<br><br>
+    若要執行單一場景的 Baseline，或一次對全部 15 個場景批次執行
+    Exploit／Baseline，請至「🧪 Lab」頁面（場景卡片下方會顯示包含誤報率的
+    「上次結果」摘要）。<br><br>
     2026-06-14：把 <code>escape-falco</code> 接進常駐 stack 後，先前記錄
     「container context 解析不到、規則不會觸發」的案例（room6 的
     <code>Docker Socket Accessed From Container</code>、
@@ -147,13 +165,28 @@
           <th>Falco 偵測率</th>
           <th>規則覆蓋率</th>
           <th>偵測延遲</th>
+          <th>誤報率</th>
           <th>最後執行</th>
         </tr>
       </thead>
       <tbody>
-        <tr><td colspan="10" class="text-dim">載入中…</td></tr>
+        <tr><td colspan="11" class="text-dim">載入中…</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="section-title">📊 RQ2 對照：規則覆蓋率 vs 誤報率</div>
+  <p class="subtitle" style="margin-bottom: 0.75rem;">
+    每個點代表一個場景：橫軸為「規則覆蓋率」（exploit 執行期間命中對應 Falco
+    規則的比例，越右越好），縱軸為「誤報率」（Baseline 靜置期間同一批規則
+    誤觸發的比例，越低越好）。理想的場景應落在<strong>右下角</strong>
+    （高覆蓋率、低誤報率）。只有跑過 Baseline 的場景才會顯示在圖上。
+  </p>
+  <div class="card">
+    <canvas id="rq2-chart" height="280"></canvas>
+    <div class="dim-cell" id="rq2-chart-empty" style="margin-top: 0.5rem; font-size: 0.8rem; display: none;">
+      尚無資料：請至「🧪 Lab」頁面對場景執行「🔬 Baseline (20s)」後再回來查看。
+    </div>
   </div>
 
   <div class="section-title">⚙️ Falco 資源開銷（RQ3 代理量測）</div>
@@ -187,6 +220,7 @@
 
 <div id="toast-container"></div>
 <script src="../js/api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 function rateCell(rate) {
   if (rate == null) return '<span class="dim-cell">—</span>';
@@ -221,9 +255,98 @@ function formatLatency(ms) {
   return `${ms} ms`;
 }
 
+function falsePositiveCell(m) {
+  if (m.false_positive_rate == null) {
+    return '<span class="dim-cell" title="尚未執行過 Baseline（至「🧪 Lab」頁面對此場景按「🔬 Baseline (20s)」）">—</span>';
+  }
+  const pct = Math.round(m.false_positive_rate * 100);
+  // 誤報率越低越好：反轉 good/bad 配色（與其他比率欄位相反）
+  const cls = pct <= 20 ? 'good' : pct >= 60 ? 'bad' : 'mid';
+  const rulesText = m.false_positive_rules.length ? `誤報規則：${m.false_positive_rules.join('、')}` : '無誤報規則';
+  const rateText = m.baseline_alert_rate_per_min != null ? `，告警率約 ${m.baseline_alert_rate_per_min.toFixed(1)} 則/分鐘` : '';
+  const title = `${rulesText}${rateText}（已跑 ${m.baseline_runs} 次 Baseline）`;
+  return `
+    <div class="rate-cell" title="${title}">
+      <div class="rate-bar"><div class="rate-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="rate-text">${pct}%</div>
+    </div>
+  `;
+}
+
 function formatTime(iso) {
   if (!iso) return '<span class="dim-cell">—</span>';
   return new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+let rq2Chart = null;
+
+function renderRQ2Chart(matrix) {
+  const canvas = document.getElementById('rq2-chart');
+  const empty = document.getElementById('rq2-chart-empty');
+  const points = matrix
+    .filter((m) => m.rule_coverage != null && m.false_positive_rate != null)
+    .map((m) => ({
+      x: Math.round(m.rule_coverage * 100),
+      y: Math.round(m.false_positive_rate * 100),
+      label: m.scenario_id,
+    }));
+
+  if (points.length === 0) {
+    canvas.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  canvas.style.display = 'block';
+  empty.style.display = 'none';
+
+  const style = getComputedStyle(document.body);
+  const textDim = style.getPropertyValue('--text-dim').trim();
+  const border = style.getPropertyValue('--border').trim();
+  const blue = style.getPropertyValue('--blue').trim();
+
+  Chart.defaults.color = textDim;
+  Chart.defaults.borderColor = border;
+
+  if (rq2Chart) rq2Chart.destroy();
+  rq2Chart = new Chart(canvas, {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: '場景',
+        data: points,
+        backgroundColor: blue,
+        pointRadius: 6,
+        pointHoverRadius: 8,
+      }],
+    },
+    options: {
+      scales: {
+        x: {
+          title: { display: true, text: '規則覆蓋率 (%)', color: textDim },
+          min: 0,
+          max: 100,
+          grid: { color: border },
+        },
+        y: {
+          title: { display: true, text: '誤報率 (%)', color: textDim },
+          min: 0,
+          max: 100,
+          grid: { color: border },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const p = ctx.raw;
+              return `${p.label}：覆蓋率 ${p.x}%、誤報率 ${p.y}%`;
+            },
+          },
+        },
+      },
+    },
+  });
 }
 
 async function loadAnalytics() {
@@ -243,6 +366,10 @@ async function loadAnalytics() {
     const avgRuleCoverage = coverableScenarios.length
       ? coverableScenarios.reduce((sum, m) => sum + m.rule_coverage, 0) / coverableScenarios.length
       : null;
+    const baselineScenarios = matrix.filter((m) => m.baseline_runs > 0);
+    const avgFalsePositive = baselineScenarios.length
+      ? baselineScenarios.reduce((sum, m) => sum + m.false_positive_rate, 0) / baselineScenarios.length
+      : null;
 
     document.getElementById('summary-row').style.display = 'flex';
     document.getElementById('sum-total-runs').textContent = totalRuns;
@@ -250,6 +377,8 @@ async function loadAnalytics() {
     document.getElementById('sum-success-rate').textContent = avgSuccess != null ? `${Math.round(avgSuccess * 100)}%` : '—';
     document.getElementById('sum-detection-rate').textContent = avgDetection != null ? `${Math.round(avgDetection * 100)}%` : '—';
     document.getElementById('sum-rule-coverage').textContent = avgRuleCoverage != null ? `${Math.round(avgRuleCoverage * 100)}%` : '—';
+    document.getElementById('sum-false-positive-rate').textContent = avgFalsePositive != null ? `${Math.round(avgFalsePositive * 100)}%` : '—';
+    document.getElementById('sum-baseline-scenarios').textContent = `${baselineScenarios.length} / ${matrix.length}`;
 
     tbody.innerHTML = matrix.map((m) => `
       <tr>
@@ -265,49 +394,16 @@ async function loadAnalytics() {
         <td>${rateCell(m.detection_rate)}</td>
         <td>${ruleCoverageCell(m)}</td>
         <td class="num-cell ${m.avg_detection_latency_ms == null ? 'dim-cell' : ''}">${formatLatency(m.avg_detection_latency_ms)}</td>
+        <td>${falsePositiveCell(m)}</td>
         <td style="font-size:0.74rem">${formatTime(m.last_run_at)}</td>
       </tr>
     `).join('');
+
+    renderRQ2Chart(matrix);
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="10" class="text-red">載入失敗：${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" class="text-red">載入失敗：${e.message}</td></tr>`;
   }
 }
-
-async function waitForRunCompletion(runId) {
-  while (true) {
-    const run = await apiFetch(`/lab/runs/${encodeURIComponent(runId)}`);
-    if (run.status && run.status !== 'starting' && run.status !== 'running') return run;
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-  }
-}
-
-document.getElementById('run-all-baselines-btn').addEventListener('click', async () => {
-  if (!window.confirm('將依序對 15 個場景各執行一次 20 秒的 Baseline（不執行攻擊，只收集 Falco 告警），全部約需數分鐘，期間請勿關閉此頁面。是否繼續？')) return;
-
-  const btn = document.getElementById('run-all-baselines-btn');
-  const progress = document.getElementById('baseline-progress');
-  btn.disabled = true;
-  try {
-    const scenarios = await apiFetch('/lab/scenarios');
-    for (let i = 0; i < scenarios.length; i++) {
-      const s = scenarios[i];
-      progress.textContent = `(${i + 1}/${scenarios.length}) ${s.id} baseline 執行中…`;
-      const run = await apiFetch('/lab/baseline-runs', {
-        method: 'POST',
-        body: JSON.stringify({ scenario_id: s.id }),
-      });
-      await waitForRunCompletion(run.id);
-    }
-    progress.textContent = '全部 baseline 已完成';
-    toast('15 個場景的 Baseline 已全部執行完成', 'success');
-    loadAnalytics();
-  } catch (e) {
-    toast(`執行失敗：${e.message}`, 'error');
-    progress.textContent = '';
-  } finally {
-    btn.disabled = false;
-  }
-});
 
 async function loadResourceUsage() {
   const tbody = document.querySelector('#resource-table tbody');
