@@ -5,6 +5,7 @@ x-room-defaults: &room-defaults
   restart: unless-stopped
   stdin_open: true
   tty: true
+  mem_limit: 256m
 
 services:
 
@@ -203,6 +204,7 @@ services:
     environment:
       - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
     restart: unless-stopped
+    mem_limit: 256m
 
   room5:
     build: ./rooms/room5
@@ -277,6 +279,7 @@ services:
     environment:
       - FLAG_SEED=${FLAG_SEED:-escape_docker_dev_seed}
     restart: unless-stopped
+    mem_limit: 256m
 
   # ══════════════ Chapter 4：The Deep End ══════════════
 

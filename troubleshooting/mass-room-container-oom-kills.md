@@ -142,24 +142,34 @@ userspace 輸出 pipeline 的處理速率，形成持續增長的積壓。
   `91.84MiB / 7.368GiB（1.22%）`、CPU 1.40%，6 PIDs——Falco 本身資源
   使用正常
 
-## 5. 後續建議（RQ3 相關，未在本次 session 實作）
+## 5. 後續建議（RQ3 相關）
 
-1. 為 15 個房間 + `secret-*`/`final`/`locked-server`/`secret-server`
+1. ~~為 15 個房間 + `secret-*`/`final`/`locked-server`/`secret-server`
    容器加上合理的 `mem_limit`（例如 256-512MB），讓 OOM-killer 的影響
-   範圍可預期，並避免單一房間吃光 host 記憶體影響其他房間
+   範圍可預期，並避免單一房間吃光 host 記憶體影響其他房間~~
+   **2026-06-15 已完成**：所有 17 個房間/輔助容器
+   （`x-room-defaults` 的 15 個 + `locked-server`/`secret-server`）
+   皆加上 `mem_limit: 256m`，`docker compose up -d` 後以
+   `docker inspect <container> --format '{{.HostConfig.Memory}}'`
+   確認為 `268435456`（256MB）且全部容器正常啟動（17/17 running）
 2. 評估是否該為 `room6` 的 `step_traced`（strace ground-truth pilot）
    加上 `Ptrace` 規則的 rate-limit 或 Falco
    side-effect（例如 `-o stdout_output.rate=...`），避免長時間運行後
-   累積成數十萬筆積壓
+   累積成數十萬筆積壓——**仍未實作**
 3. **避免在非必要時重啟 `escape-falco`**——重啟本身（eBPF probe
    重新 attach `pid: host`）就是一次資源尖峰，本次直接造成第二波
    OOM-kill；若未來需要清積壓，建議改為「降低告警量的根因」（第 5.2
-   點）而非定期重啟
+   點）而非定期重啟——**仍為操作守則，未自動化**
 
 ## 6. 修改檔案清單
 
-本次純粹是發現、排查與操作層級修復（`docker compose up -d` +
-`docker restart escape-falco`），**沒有程式碼或設定檔變更**。
+事故發現與排查當時純粹是操作層級修復（`docker compose up -d` +
+`docker restart escape-falco`），沒有設定檔變更。
+
+**2026-06-15 後續修復**：
+- `docker-compose.yml`：`x-room-defaults` 新增 `mem_limit: 256m`
+  （套用至 room0-room11/final/secret-a/secret-b 共 15 個容器），另對
+  `locked-server`/`secret-server`（未使用該 anchor）各別加上相同設定
 
 ## 7. 相關問題
 
