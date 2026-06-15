@@ -317,3 +317,63 @@ RQ2 的第二種偵測機制對照（pilot，見
 追蹤/除錯工具」與「真正的攻擊性 ptrace 注入」缺乏區分能力，自我
 可觀測性手段（strace）與規則式偵測（Falco）並存時會互相產生大量
 噪音。詳見 `troubleshooting/strace-ground-truth-pilot.md`。
+
+## 4.8 2026-06-15：`Ptrace` 限流可行性評估 + Falco 重啟風險的 runbook
+
+延續 4.7 與
+[`troubleshooting/mass-room-container-oom-kills.md`](../troubleshooting/mass-room-container-oom-kills.md)
+第 5 節的兩項後續建議，本次逐一評估其可行性：
+
+**① 對 `Ptrace Attach To Other Process` 加上 rate-limit——評估結果：此
+Falco 版本（0.39.2）不支援，且規則層級的排除方案風險過高，列為未來工作**
+
+- 用 `falco --config-schema` 檢查設定 schema，原先設想的全域
+  `outputs.rate` / `outputs.max_burst`（舊版 Falco/sysdig 的告警節流
+  機制）**在 0.39.2 中不存在**——schema 中唯一含 `rate`/`max_burst`
+  的物件是 `syscall_event_drops`（處理 syscall buffer 掉包，與告警
+  節流無關）。`falco --rule-schema` 也未提供逐規則的
+  rate/max_burst 欄位。全域節流路線不可行。
+- 規則條件層級的替代方案——在 `Ptrace Attach To Other Process` 加上
+  `and container.name != "room6"` 排除 strace ground-truth pilot 的
+  自我追蹤——因第 4.3 節已記錄 `container.name`/`container.id` 對
+  `docker exec` 短命行程經常解析為 `null`，而 Falco 對 `!=` 比較在
+  欄位為 `null` 時通常視為不成立，此排除條件可能：(a) 對 room6 的
+  ptrace 事件不生效（`container.name` 本身就是 null，不等於
+  `"room6"` 這個比較結果為 false，規則整體仍為 false → 不觸發，剛好
+  「看似有效」），但 (b) 若 room3 真正的攻擊事件 `container.name` 也
+  是 `null`，同一個排除條件會「順便」讓 room3 的偵測也失效——而要
+  驗證這兩種情況分別會怎樣，必須改規則後重啟 Falco 才能觀察真實
+  `output_fields`，與下面 ② 的「避免不必要重啟」直接衝突。
+  **結論**：在沒有重啟驗證迴圈的前提下，不安全地修改這條規則風險
+  大於收益，列為未來工作（需要專門的一次性實驗：改規則 → 重啟 →
+  分別觸發 room3 與 room6 → 比對 `output_fields.container.*` →
+  視結果決定條件寫法）。
+
+**② 避免不必要的 `escape-falco` 重啟——評估結果：屬於硬限制（無法
+熱重載），已寫入下方 runbook**
+
+- `falco --help` 未提供任何設定/規則熱重載選項（無 `--reload`、無
+  SIGHUP 處理）。換言之，**任何 `falco.yaml`/`lab_rules.yaml` 的修改
+  都必須靠 `docker restart escape-falco`（或
+  `docker compose up -d escape-falco`）生效**——這證實了
+  `mass-room-container-oom-kills.md` 第 5.3 點不是「建議」而是
+  「目前唯一手段，且每次都有觸發 mass OOM-kill 的風險」。
+- **runbook（修改 Falco 設定/規則時請依此順序操作）**：
+  1. 確認 `docker-compose.yml` 中 15 個房間 + `locked-server`/
+     `secret-server` 皆已套用 `mem_limit`（2026-06-15 已完成，見
+     `mass-room-container-oom-kills.md` 第 5.1 點）——這不能避免
+     `escape-falco` 重啟造成 host 資源尖峰，但能讓 OOM-killer 的影響
+     範圍可預期（單一容器最多 256MB），不會無限蔓延
+  2. 避免在「15×N baseline/exploit 批次執行」後立刻重啟——批次執行
+     本身已是一次負載尖峰，疊加重啟尖峰會放大 OOM 風險（本次 session
+     已實測發生兩波）
+  3. 重啟後立即跑 `docker exec <room> bash -c 'cat /etc/motd'` 之類的
+     sanity check + `docker ps -a` 確認沒有新增 `Exited` 容器，再繼續
+     後續操作
+  4. 2026-06-15 觀察：`escape-falco` 已連續運行 12+ 小時，最新一筆
+     log 的 `output_fields.time` 落後當下時間約 **11.7 小時**（比
+     2.1 節記錄的 37 分鐘積壓更嚴重，會隨運行時間累積）。若要做最終
+     demo/資料收集前的偵測延遲量測，建議排定**一次性、計畫內**的
+     `escape-falco` 重啟以清空積壓——但依①的結論，這次重啟不應同時
+     夾帶規則改動（避免把「重啟造成的 OOM」與「規則改動造成的偵測
+     失效」混在一起，難以歸因）

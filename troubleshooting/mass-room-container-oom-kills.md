@@ -153,13 +153,22 @@ userspace 輸出 pipeline 的處理速率，形成持續增長的積壓。
    `docker inspect <container> --format '{{.HostConfig.Memory}}'`
    確認為 `268435456`（256MB）且全部容器正常啟動（17/17 running）
 2. 評估是否該為 `room6` 的 `step_traced`（strace ground-truth pilot）
-   加上 `Ptrace` 規則的 rate-limit 或 Falco
-   side-effect（例如 `-o stdout_output.rate=...`），避免長時間運行後
-   累積成數十萬筆積壓——**仍未實作**
+   加上 `Ptrace` 規則的 rate-limit，避免長時間運行後累積成數十萬筆
+   積壓——**2026-06-15 評估完畢，不可行/風險過高，列為未來工作**：
+   Falco 0.39.2 的 `--config-schema`/`--rule-schema` 均無全域或
+   逐規則的 `rate`/`max_burst` 告警節流欄位；規則條件層級的排除方案
+   （排除 `container.name = "room6"`）因 `container.name` 對
+   `docker exec` 短命行程常為 `null`，可能連帶讓 room3 真正的攻擊
+   偵測失效，且驗證需要重啟 Falco（與第 3 點衝突）。詳見
+   `falco/README.md` 第 4.8 節
 3. **避免在非必要時重啟 `escape-falco`**——重啟本身（eBPF probe
    重新 attach `pid: host`）就是一次資源尖峰，本次直接造成第二波
-   OOM-kill；若未來需要清積壓，建議改為「降低告警量的根因」（第 5.2
-   點）而非定期重啟——**仍為操作守則，未自動化**
+   OOM-kill。**2026-06-15 確認**：`falco --help` 無任何熱重載/SIGHUP
+   選項，任何 `falco.yaml`/`lab_rules.yaml` 改動都必須靠重啟生效，
+   因此本點是硬限制而非建議；已將操作順序寫成 runbook，見
+   `falco/README.md` 第 4.8 節。另外觀察到 `escape-falco` 已連續運行
+   12+ 小時，告警積壓已達約 11.7 小時（比第 2.1 節記錄的 37 分鐘更
+   嚴重），建議在最終 demo/資料收集前安排一次**計畫內**重啟清空積壓
 
 ## 6. 修改檔案清單
 
