@@ -35,13 +35,22 @@ function createDb(filePath) {
     return readAll().find((r) => r.id === id);
   }
 
+  function patch(id, fields) {
+    const runs = readAll();
+    const idx = runs.findIndex((r) => r.id === id);
+    if (idx === -1) return null;
+    Object.assign(runs[idx], fields);
+    writeAll(runs);
+    return runs[idx];
+  }
+
   // 清空所有歷史執行紀錄，供前端「清除歷史記錄」功能使用（例如在重大
   // 修正後重跑實驗、避免舊資料污染 detection-matrix 統計）。
   function clear() {
     writeAll([]);
   }
 
-  return { insert, list, get, clear };
+  return { insert, list, get, patch, clear };
 }
 
 module.exports = { createDb };
