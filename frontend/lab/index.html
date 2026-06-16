@@ -83,7 +83,7 @@
     <span class="hint">批次操作會依序對 15 個場景執行，期間請勿關閉此頁面</span>
     <span id="bulk-progress" class="dim-cell" style="font-size: 0.78rem; align-self: center;"></span>
     <button class="btn" id="run-all-baselines-btn" title="依序對 15 個場景各執行一次 20 秒的 Baseline（不執行攻擊，只收集 Falco 告警），用於計算誤報率（false_positive_rate），結果可在「📈 分析」頁查看">🔬 執行全部 Baseline (15×20s)</button>
-    <button class="btn btn-primary" id="run-all-scenarios-btn" title="依序對 15 個場景各執行一次完整 exploit">▶ 執行全部場景 (15)</button>
+    <a class="btn btn-primary" href="batch-run.html" title="開啟即時批次執行頁面，每個場景的步驟與 Falco 告警即時顯示">▶ 執行全部場景 (15)</a>
   </div>
 
   <div class="section-title">📋 場景目錄</div>
