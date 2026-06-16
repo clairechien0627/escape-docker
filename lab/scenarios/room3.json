@@ -14,7 +14,6 @@
   "expected_outcome": "觸發背景程序輸出明文 FLAG（透過 IPC/signal 的資訊洩漏）",
   "falco_rule_refs": [
     "signal_to_other_process",
-    "ptrace_attach",
     "proc_read_other_pid"
   ],
   "falco_relevant_behaviors": [
