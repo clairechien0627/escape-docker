@@ -248,29 +248,14 @@ async function runAllSequentially({ button, otherButton, progress, endpoint, lab
 
 document.getElementById('run-all-baselines-btn').addEventListener('click', () => {
   const btn = document.getElementById('run-all-baselines-btn');
-  const other = document.getElementById('run-all-scenarios-btn');
   runAllSequentially({
     button: btn,
-    otherButton: other,
+    otherButton: btn,
     progress: document.getElementById('bulk-progress'),
     endpoint: '/lab/baseline-runs',
     label: 'baseline 執行中',
     confirmMsg: '將依序對 15 個場景各執行一次 20 秒的 Baseline（不執行攻擊，只收集 Falco 告警），全部約需數分鐘，期間請勿關閉此頁面。是否繼續？',
     doneMsg: '15 個場景的 Baseline 已全部執行完成',
-  });
-});
-
-document.getElementById('run-all-scenarios-btn').addEventListener('click', () => {
-  const btn = document.getElementById('run-all-scenarios-btn');
-  const other = document.getElementById('run-all-baselines-btn');
-  runAllSequentially({
-    button: btn,
-    otherButton: other,
-    progress: document.getElementById('bulk-progress'),
-    endpoint: '/lab/runs',
-    label: '執行中',
-    confirmMsg: '將依序對 15 個場景各執行一次完整 exploit，全部約需數分鐘，期間請勿關閉此頁面。是否繼續？',
-    doneMsg: '15 個場景已全部執行完成',
   });
 });
 
