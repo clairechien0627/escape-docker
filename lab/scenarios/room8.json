@@ -14,8 +14,7 @@
   ],
   "expected_outcome": "修正 docker-compose 設定後，app 容器正常啟動並透過 HTTP（port 8080）回傳 FLAG",
   "falco_rule_refs": [
-    "docker_compose_exec",
-    "local_http_request_nonstandard_port"
+    "docker_compose_exec"
   ],
   "falco_relevant_behaviors": [
     "docker compose / docker-compose-v2 指令執行",
