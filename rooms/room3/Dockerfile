@@ -9,7 +9,7 @@ RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "120";\n' > /etc/apt/a
     && apt-get update && apt-get install -y \
     bash vim less curl wget \
     procps strace lsof htop \
-    python3 \
+    python3 libcap2-bin \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -s /bin/bash -u 1000 player
