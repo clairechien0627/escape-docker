@@ -120,6 +120,7 @@
     <a href="../achievements.html">🏆 成就</a>
     <a href="index.html" class="active">🧪 Lab</a>
     <a href="analytics.html">📈 分析</a>
+    <span id="tier-indicator" class="badge badge-dim" title="目前記錄的 Falco 規則 tier；若需切換請至 🧪 Lab 頁面" style="cursor:default">⏳ Tier</span>
   </div>
 </nav>
 
@@ -321,6 +322,17 @@ async function runScenario(i) {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${location.host}/api/lab/runs/${encodeURIComponent(run.id)}/stream`);
 
+    let handled = false;
+    function advance(status, durationMs, flagFound) {
+      if (handled) return;
+      handled = true;
+      updateItem(i, status, durationMs, flagFound);
+      results.push({ scenario_id: s.id, id: run.id, status });
+      updateProgress();
+      ws.close();
+      setTimeout(() => runScenario(i + 1), 600);
+    }
+
     ws.addEventListener('message', (ev) => {
       const msg = JSON.parse(ev.data);
       switch (msg.type) {
@@ -329,20 +341,16 @@ async function runScenario(i) {
         case 'alert':  addAlert(msg.alert); break;
         case 'result':
           onResult(msg, i);
-          ws.close();
-          setTimeout(() => runScenario(i + 1), 600);
+          advance(msg.status, msg.duration_ms, msg.flag_found);
           break;
         case 'error':
           setRunStatus('error');
-          updateItem(i, 'error', null, null);
-          results.push({ scenario_id: s.id, id: run.id, status: 'error' });
-          updateProgress();
-          ws.close();
-          setTimeout(() => runScenario(i + 1), 600);
+          advance('error', null, null);
           break;
       }
     });
 
+    ws.addEventListener('close', () => advance('error', null, null));
     ws.addEventListener('error', () => toast(`WebSocket 連線失敗（${s.id}）`, 'error'));
 
   } catch (e) {
@@ -367,6 +375,21 @@ function finishAll() {
   $('done-banner').style.display = 'block';
 }
 
+async function loadTierIndicator() {
+  const badge = document.getElementById('tier-indicator');
+  if (!badge) return;
+  try {
+    const { tier } = await apiFetch('/lab/falco-tier');
+    badge.textContent = tier === 'basic' ? '🔵 Basic (8)' : '🟢 Full (31)';
+    badge.style.cssText = tier === 'basic'
+      ? 'cursor:default;border-color:#60c8ff;color:#60c8ff'
+      : 'cursor:default;border-color:var(--green);color:var(--green)';
+    badge.className = 'badge';
+  } catch {
+    badge.textContent = '⚠ Tier 未知';
+  }
+}
+
 async function init() {
   try {
     scenarios = await apiFetch('/lab/scenarios');
@@ -387,6 +410,7 @@ $('start-btn').addEventListener('click', () => {
 });
 
 init();
+loadTierIndicator();
 </script>
 </body>
 </html>

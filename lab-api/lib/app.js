@@ -1,4 +1,7 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
 
 const MAX_ALERTS = 500;
 
@@ -64,6 +67,29 @@ const DISABLED_FALCO_RULES = new Set([
   'Access To Sensitive Export Endpoint',
 ]);
 
+// Falco Tier 設定：記錄目前啟用的規則 tier（basic / full）。
+// 寫入 data/falco-tier（純文字），同一檔案以唯讀方式 bind-mount 進
+// escape-falco 容器（/etc/falco/tier），由 falco/start.sh 在啟動時讀取，
+// 決定是否加上 -T tier_full_only。切換後自動 docker restart escape-falco。
+const TIER_FILE_PATH = path.join(__dirname, '../data/falco-tier');
+function readTierConfig() {
+  try {
+    const content = fs.readFileSync(TIER_FILE_PATH, 'utf8').trim();
+    return content === 'basic' ? 'basic' : 'full';
+  } catch { return 'full'; }
+}
+function writeTierConfig(tier) {
+  fs.writeFileSync(TIER_FILE_PATH, tier);
+}
+function restartFalco() {
+  return new Promise((resolve, reject) => {
+    exec('docker restart escape-falco', { timeout: 30000 }, (err, _stdout, stderr) => {
+      if (err) reject(new Error((stderr || err.message || 'restart failed').trim()));
+      else resolve();
+    });
+  });
+}
+
 // 該 scenario 的 falco_rule_refs 中，有對應且已啟用的 Falco 規則名稱清單
 // （rule_coverage / false_positive_rate 的分母）。多個 falco_rule_refs
 // 可能對應到同一條 Falco 規則（例如 read_etc_motd 與 read_hint_file 都對應
@@ -86,7 +112,7 @@ function toScenarioSummary(scenario) {
 // run 物件給「列表」用的精簡版本（省略 steps/stderr 等大型欄位）
 function toRunSummary(run) {
   const { id, scenario_id, started_at, finished_at, status, final_privilege, flag_found, duration_ms, exit_code } = run;
-  return { id, scenario_id, started_at, finished_at, status, final_privilege, flag_found, duration_ms, exit_code, type: run.type || 'exploit' };
+  return { id, scenario_id, started_at, finished_at, status, final_privilege, flag_found, duration_ms, exit_code, type: run.type || 'exploit', falco_tier: run.falco_tier || null };
 }
 
 // 對外回傳「執行中」run 的精簡狀態（不含 emitter）
@@ -113,6 +139,24 @@ function createApp({ scenarios, db, runManager, dockerStats, resourceUsageContai
     res.json(scenario);
   });
 
+  // ── Falco Tier 設定（前端顯示目前 tier、在建立 run 前切換並手動重啟 Falco）──
+  app.get('/api/lab/falco-tier', (req, res) => {
+    res.json({ tier: readTierConfig() });
+  });
+
+  app.post('/api/lab/falco-tier', async (req, res) => {
+    const { tier } = req.body || {};
+    if (!['basic', 'full'].includes(tier))
+      return res.status(400).json({ error: 'tier must be basic or full' });
+    writeTierConfig(tier);
+    try {
+      await restartFalco();
+      res.json({ tier, restarted: true });
+    } catch (restartErr) {
+      res.json({ tier, restarted: false, restart_error: restartErr.message });
+    }
+  });
+
   // ── 執行實驗（非同步：立即回傳 run_id，背景跑 reset -> exploit -> reset）──
   // Phase 3：前端可立即用回傳的 id 連線 /api/lab/runs/:id/stream 取得即時進度。
   app.post('/api/lab/runs', (req, res) => {
@@ -120,7 +164,7 @@ function createApp({ scenarios, db, runManager, dockerStats, resourceUsageContai
     const scenario = scenarioById.get(scenarioId);
     if (!scenario) return res.status(404).json({ error: 'unknown scenario' });
 
-    const run = runManager.startRun(scenarioId);
+    const run = runManager.startRun(scenarioId, { falco_tier: readTierConfig() });
     res.status(202).json(toRunSnapshot(run));
   });
 
@@ -131,7 +175,7 @@ function createApp({ scenarios, db, runManager, dockerStats, resourceUsageContai
     if (!scenario) return res.status(404).json({ error: 'unknown scenario' });
 
     const durationMs = Number(req.body && req.body.duration_ms) || DEFAULT_BASELINE_DURATION_MS;
-    const run = runManager.startBaselineRun(scenarioId, durationMs);
+    const run = runManager.startBaselineRun(scenarioId, durationMs, { falco_tier: readTierConfig() });
     res.status(202).json(toRunSnapshot(run));
   });
 
@@ -210,7 +254,12 @@ function createApp({ scenarios, db, runManager, dockerStats, resourceUsageContai
       last_run_at: null,
     }]));
 
+    const tierFilter = req.query.tier || 'all';
     for (const run of db.list()) {
+      if (tierFilter !== 'all') {
+        const runTier = run.falco_tier || 'full';
+        if (runTier !== tierFilter) continue;
+      }
       const entry = stats.get(run.scenario_id);
       if (!entry) continue;
 

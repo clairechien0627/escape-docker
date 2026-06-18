@@ -1,0 +1,27 @@
+# falco/falco-basic.yaml
+#
+# Basic Tier 設定：在 falco.yaml 基礎上額外載入 lab_rules_basic_override.yaml，
+# 停用所有 tier_full_only 規則，僅保留 tier_basic 的 8 條核心規則。
+# 由 falco/start.sh 在 TIER=basic 時使用（-c /etc/falco/falco-basic.yaml）。
+
+rules_file:
+  - /etc/falco/falco_rules.yaml
+  - /etc/falco/rules.d
+  - /etc/falco/lab_rules.yaml
+  - /etc/falco/lab_rules_basic_override.yaml
+
+engine:
+  kind: modern_ebpf
+
+json_output: true
+json_include_output_property: true
+json_include_tags_property: true
+
+http_output:
+  enabled: true
+  url: "http://lab-api:4100/api/lab/falco-webhook"
+
+stdout_output:
+  enabled: true
+
+priority: debug

@@ -1,0 +1,109 @@
+# Basic Tier override：載入此檔案後停用所有 tier_full_only 規則，
+# 僅保留 tier_basic 的 8 條高信度核心規則。
+# 使用方式：falco -c falco.yaml -r lab_rules_basic_override.yaml
+# (由 falco/start.sh 在 TIER=basic 時自動加上)
+
+- rule: Baseline Read Of Motd Or Hint File
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Recursive Find Under Archive Directory
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Base64 Decode Executed
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: DAC Read Search Capability Used
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Signal Sent To Other Process
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Ptrace Attach To Other Process
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Read Proc Cmdline Or Environ Of Other Process
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: SSH Keygen Executed In Container
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: SSH Local Port Forward Established
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Loopback Connection To Internal-Only Port 9090
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Local Service Port Scan
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Loopback Connection To Nonstandard Port 7777
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Docker Build Executed In Container
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: New Container Created Via Docker CLI
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Docker Save Or History Executed
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Tar Extraction Into Tmp Directory
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Recursive Grep Under Tmp
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Docker Compose Executed In Container
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Local HTTP Request To Port 8080
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Non-root Write To Cron Watched File
+  override:
+    enabled: replace
+  enabled: false
+
+- rule: Cron Spawned Root Process
+  override:
+    enabled: replace
+  enabled: false

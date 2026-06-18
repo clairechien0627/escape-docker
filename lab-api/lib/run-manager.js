@@ -33,7 +33,7 @@ function parseAlertTimeMs(alert) {
 function createRunManager({ scenarioById, db, runExploit, roomManagerClient, labDir }) {
   const runs = new Map();
 
-  function startRun(scenarioId) {
+  function startRun(scenarioId, extraFields = {}) {
     const scenario = scenarioById.get(scenarioId);
     if (!scenario) return null;
 
@@ -42,6 +42,7 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
     const run = {
       id,
       scenario_id: scenarioId,
+      ...extraFields,
       status: 'starting',
       started_at: new Date().toISOString(),
       finished_at: null,
@@ -77,6 +78,7 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
         const finished = {
           id,
           scenario_id: scenarioId,
+          ...extraFields,
           started_at: run.started_at,
           finished_at: new Date().toISOString(),
           exit_code: exitCode,
@@ -101,6 +103,18 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
         run.status = 'error';
         run.finished_at = new Date().toISOString();
         run.error = err.message;
+        db.insert({
+          id,
+          scenario_id: scenarioId,
+          ...extraFields,
+          started_at: run.started_at,
+          finished_at: run.finished_at,
+          status: 'error',
+          error: err.message,
+          steps: run.steps,
+          alerts: run.alerts,
+          alert_rule_counts: run.alert_rule_counts,
+        });
         emitter.emit('error', { type: 'error', error: err.message });
       }
     })();
@@ -114,7 +128,7 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
   // 寫入 db 的記錄帶 type: 'baseline'，detection-matrix 會將其與一般
   // 執行記錄分開統計，用來判斷哪些規則在「沒有攻擊」時也會觸發
   // （誤報候選）。
-  function startBaselineRun(scenarioId, durationMs) {
+  function startBaselineRun(scenarioId, durationMs, extraFields = {}) {
     const scenario = scenarioById.get(scenarioId);
     if (!scenario) return null;
 
@@ -124,6 +138,7 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
       id,
       scenario_id: scenarioId,
       type: 'baseline',
+      ...extraFields,
       status: 'starting',
       started_at: new Date().toISOString(),
       finished_at: null,
@@ -154,6 +169,7 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
           id,
           scenario_id: scenarioId,
           type: 'baseline',
+          ...extraFields,
           started_at: run.started_at,
           finished_at: new Date().toISOString(),
           status: 'completed',
@@ -172,6 +188,19 @@ function createRunManager({ scenarioById, db, runExploit, roomManagerClient, lab
         run.status = 'error';
         run.finished_at = new Date().toISOString();
         run.error = err.message;
+        db.insert({
+          id,
+          scenario_id: scenarioId,
+          type: 'baseline',
+          ...extraFields,
+          started_at: run.started_at,
+          finished_at: run.finished_at,
+          status: 'error',
+          error: err.message,
+          steps: run.steps,
+          alerts: run.alerts,
+          alert_rule_counts: run.alert_rule_counts,
+        });
         emitter.emit('error', { type: 'error', error: err.message });
       }
     })();
