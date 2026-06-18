@@ -36,7 +36,7 @@ echo "  輸入 'mission' 查看任務說明"
 BASHRC
 # ── 修正無換行指令後 prompt 黏行 ──
 cat > /etc/profile.d/prompt-newline.sh << 'EOF'
-PROMPT_COMMAND='printf "%${COLUMNS:-80}s\r\033[K" ""'
+PROMPT_COMMAND='printf "%$(( ${COLUMNS:-80} - 1 ))s\r\033[K" ""'
 EOF
 
 chown -R player:player /home/player

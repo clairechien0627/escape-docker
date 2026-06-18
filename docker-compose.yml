@@ -175,6 +175,10 @@ services:
     container_name: room3
     hostname: room3
     <<: *room-defaults
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
     networks:
       - game_net
     environment:
