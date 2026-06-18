@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>場景詳情 — EdgeSec Lab</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .page { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+    .scenario-info h1 { font-size: 1.4rem; color: var(--text-main); margin-bottom: 0.25rem; }
+    .sd-stats-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .sd-stat-pill {
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.3rem 0.65rem;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .sd-stat-pill i { width: 13px; height: 13px; }
+    .sd-stat-pill.good { color: var(--green); border-color: var(--green); }
+    .sd-stat-pill.bad  { color: var(--red);   border-color: var(--red); }
+    .sd-stat-pill.mid  { color: var(--yellow); border-color: var(--yellow); }
+    .tier-switching { font-size: 0.78rem; color: var(--yellow); display: flex; align-items: center; gap: 0.4rem; }
+    .config-note { font-size: 0.78rem; color: var(--text-muted); }
+    .run-type-desc { font-size: 0.8rem; color: var(--text-dim); margin-top: 0.25rem; }
+
+    /* ── section 卡片化 ── */
+    .scenario-info section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+    .scenario-info { gap: 0.75rem; }
+    .scenario-info section h3 {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--lab-brand);
+      margin: 0 0 0.65rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-weight: 700;
+    }
+    .scenario-info section h3 i { width: 13px; height: 13px; flex-shrink: 0; }
+    .scenario-info section p,
+    .scenario-info section ul { margin: 0; }
+
+    /* ── 設定面板標題 ── */
+    .scenario-config h3 {
+      font-size: 0.85rem;
+      color: var(--lab-brand);
+      margin: 0 0 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 700;
+    }
+    .scenario-config h3 i { width: 15px; height: 15px; }
+  </style>
+</head>
+<body class="lab-page">
+
+<nav class="navbar lab-navbar">
+  <a class="navbar-brand" href="../index.html">
+    <i data-lucide="flask-conical"></i> EdgeSec Lab
+  </a>
+  <div class="navbar-links">
+    <a href="index.html">
+      <i data-lucide="layout-grid"></i> 實驗控制台
+    </a>
+    <a href="analytics.html">
+      <i data-lucide="bar-chart-2"></i> 分析儀表板
+    </a>
+    <a href="../index.html" style="color:var(--text-muted);font-size:0.78rem">
+      <i data-lucide="external-link"></i> Story Mode
+    </a>
+  </div>
+</nav>
+
+<div class="page">
+  <a href="index.html" class="back-link">
+    <i data-lucide="arrow-left"></i> 返回場景目錄
+  </a>
+
+  <div class="scenario-detail-layout" id="scenario-detail">
+    <!-- 左欄：說明 -->
+    <div class="scenario-info">
+      <div class="scenario-id-line" id="sd-id-line">載入中…</div>
+      <h1 id="sd-title"></h1>
+      <div class="sd-stats-row" id="sd-stats-row" style="display:none"></div>
+
+      <section>
+        <h3>漏洞說明</h3>
+        <p class="text-prose" id="sd-description" style="color:var(--text-dim)">載入中…</p>
+      </section>
+
+      <section>
+        <h3>
+          <i data-lucide="list-ordered"></i>
+          攻擊目標
+        </h3>
+        <p class="text-prose" id="sd-expected-outcome" style="color:var(--text-dim)">—</p>
+      </section>
+
+      <section>
+        <h3>
+          <i data-lucide="radar"></i>
+          Falco 監控規則
+        </h3>
+        <p class="text-prose" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.5rem">
+          以下規則在本次實驗中會被監控。執行後可在分析頁查看各規則的實際觸發情形。
+        </p>
+        <ul class="rule-list" id="sd-rules">
+          <li>載入中…</li>
+        </ul>
+      </section>
+
+      <section id="sd-history-section" style="display:none">
+        <h3>
+          <i data-lucide="bar-chart-2"></i>
+          歷史執行數據
+        </h3>
+        <div id="sd-stats-detail"></div>
+        <a href="analytics.html" id="sd-analytics-link" class="btn btn-ghost btn-sm" target="_blank" style="margin-top:0.5rem;display:inline-flex">
+          <i data-lucide="external-link"></i> 在分析儀表板查看完整數據
+        </a>
+      </section>
+    </div>
+
+    <!-- 右欄：設定面板 -->
+    <div class="scenario-config card">
+      <h3>
+        <i data-lucide="settings"></i>
+        實驗設定
+      </h3>
+
+      <div class="config-row">
+        <label>Falco 規則集</label>
+        <div class="tier-toggle">
+          <button class="tier-btn active" id="tier-btn-basic" data-tier="basic">
+            Basic（8 規則）
+          </button>
+          <button class="tier-btn" id="tier-btn-full" data-tier="full">
+            Full（31 規則）
+          </button>
+        </div>
+        <div id="tier-switching-msg" class="tier-switching" style="display:none">
+          <i data-lucide="loader" class="spin-icon"></i> 切換中，Falco 重啟約 5-10 秒…
+        </div>
+        <p class="config-note" id="current-tier-note">目前 Tier 載入中…</p>
+      </div>
+
+      <div class="config-row">
+        <label>執行類型</label>
+        <div class="run-type-toggle">
+          <label>
+            <input type="radio" name="run-type" value="exploit" id="rt-exploit" checked>
+            Exploit（攻擊）
+          </label>
+          <label>
+            <input type="radio" name="run-type" value="baseline" id="rt-baseline">
+            Baseline（靜置 20 秒）
+          </label>
+        </div>
+        <p class="run-type-desc text-prose" id="run-type-desc">
+          攻擊腳本自動執行，觀察 Falco 是否能偵測到各步驟的行為。
+        </p>
+      </div>
+
+      <button class="btn btn-lab-primary btn-block" id="run-btn" disabled>
+        <i data-lucide="loader" class="spin-icon" id="run-btn-loading" style="display:none"></i>
+        <i data-lucide="play" id="run-btn-icon"></i>
+        開始執行（開新分頁）
+      </button>
+
+      <p class="config-note" style="text-align:center">
+        執行頁面將在新分頁開啟，此頁面保留供參考。
+      </p>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/api.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>
+
+const urlParams = new URLSearchParams(location.search);
+const scenarioId = urlParams.get('id');
+
+if (!scenarioId) {
+  window.location.href = 'index.html';
+}
+
+// Run type description
+document.querySelectorAll('input[name="run-type"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    const desc = document.getElementById('run-type-desc');
+    if (radio.value === 'baseline') {
+      desc.textContent = '不執行攻擊腳本，靜置 20 秒收集背景 Falco 告警，用於計算誤報率。';
+    } else {
+      desc.textContent = '攻擊腳本自動執行，觀察 Falco 是否能偵測到各步驟的行為。';
+    }
+  });
+});
+
+let _currentTier = null;
+
+async function loadScenario() {
+  try {
+    const [scenarios, matrix, tierData] = await Promise.all([
+      apiFetch('/lab/scenarios'),
+      apiFetch('/lab/analytics/detection-matrix').catch(() => []),
+      apiFetch('/lab/falco-tier').catch(() => ({ tier: null })),
+    ]);
+
+    const scenario = scenarios.find(s => s.id === scenarioId);
+    if (!scenario) {
+      document.getElementById('sd-id-line').textContent = `找不到場景：${scenarioId}`;
+      return;
+    }
+
+    // 填入說明
+    document.title = `${scenario.title} — EdgeSec Lab`;
+    document.getElementById('sd-id-line').textContent = `${scenario.id} · ${scenario.container} · ${scenario.vuln_type}`;
+    document.getElementById('sd-title').textContent = scenario.title;
+    const descEl = document.getElementById('sd-description');
+    if (scenario.description) {
+      descEl.textContent = scenario.description;
+    } else {
+      descEl.innerHTML = `此場景展示 <strong style="color:var(--text-main)">${scenario.vuln_type.replace(/-/g, ' ')}</strong> 類型的容器錯誤配置。攻擊目標與監控規則請見下方說明。`;
+    }
+    document.getElementById('sd-expected-outcome').textContent =
+      scenario.expected_outcome || '—';
+
+    // Falco 規則
+    const ruleList = document.getElementById('sd-rules');
+    const rules = scenario.falco_rule_refs || [];
+    if (rules.length === 0) {
+      ruleList.innerHTML = '<li style="color:var(--text-muted)">此場景沒有對應的可量測 Falco 規則</li>';
+    } else {
+      ruleList.innerHTML = rules.map(r => `<li>${r}</li>`).join('');
+    }
+
+    // 歷史數據
+    const m = matrix.find(x => x.scenario_id === scenarioId);
+    if (m && m.runs > 0) {
+      const coverage = m.rule_coverage != null ? Math.round(m.rule_coverage * 100) : null;
+      const fp = m.false_positive_rate != null ? Math.round(m.false_positive_rate * 100) : null;
+      const latency = m.avg_detection_latency_ms;
+
+      function pillClass(pct, invert = false) {
+        if (pct == null) return '';
+        if (invert) return pct <= 20 ? 'good' : pct >= 60 ? 'bad' : 'mid';
+        return pct >= 70 ? 'good' : pct < 30 ? 'bad' : 'mid';
+      }
+      function formatMs(ms) {
+        if (ms == null) return '—';
+        return ms >= 1000 ? `${(ms/1000).toFixed(1)}s` : `${ms}ms`;
+      }
+
+      const statsRow = document.getElementById('sd-stats-row');
+      statsRow.innerHTML = [
+        `<span class="sd-stat-pill"><i data-lucide="play"></i>${m.runs} 次執行</span>`,
+        coverage != null ? `<span class="sd-stat-pill ${pillClass(coverage)}"><i data-lucide="scan-line"></i>覆蓋率 ${coverage}%</span>` : '',
+        latency != null ? `<span class="sd-stat-pill"><i data-lucide="timer"></i>${formatMs(latency)}</span>` : '',
+        fp != null ? `<span class="sd-stat-pill ${pillClass(fp, true)}"><i data-lucide="alert-triangle"></i>誤報率 ${fp}%</span>` : '',
+      ].join('');
+      statsRow.style.display = 'flex';
+
+      // 歷史區塊
+      document.getElementById('sd-analytics-link').href = `analytics.html#${scenarioId}`;
+      document.getElementById('sd-history-section').style.display = 'block';
+    }
+
+    // Tier 狀態
+    _currentTier = tierData.tier || 'basic';
+    updateTierUI(_currentTier);
+
+    // 啟用執行按鈕
+    document.getElementById('run-btn').disabled = false;
+
+    lucide.createIcons();
+  } catch (e) {
+    toast(`載入失敗：${e.message}`, 'error');
+  }
+}
+
+function updateTierUI(tier) {
+  _currentTier = tier;
+  const basicBtn = document.getElementById('tier-btn-basic');
+  const fullBtn = document.getElementById('tier-btn-full');
+  basicBtn.classList.toggle('active', tier === 'basic');
+  fullBtn.classList.toggle('active', tier === 'full');
+  document.getElementById('current-tier-note').textContent =
+    tier === 'basic'
+      ? '目前：Basic Tier（8 條高信度規則，誤報率低）'
+      : '目前：Full Tier（31 條規則，覆蓋更廣但誤報率較高）';
+}
+
+// Tier 切換
+document.querySelectorAll('.tier-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const newTier = btn.dataset.tier;
+    if (newTier === _currentTier) return;
+
+    const switchMsg = document.getElementById('tier-switching-msg');
+    const runBtn = document.getElementById('run-btn');
+    document.querySelectorAll('.tier-btn').forEach(b => b.disabled = true);
+    runBtn.disabled = true;
+    switchMsg.style.display = 'flex';
+
+    try {
+      const result = await apiFetch('/lab/falco-tier', {
+        method: 'POST',
+        body: JSON.stringify({ tier: newTier }),
+      });
+      updateTierUI(newTier);
+      if (result.restarted) {
+        toast(`已切換至 ${newTier === 'basic' ? 'Basic' : 'Full'} Tier，Falco 已重啟。`, 'success');
+      } else {
+        toast(`Tier 已記錄，但 Falco 重啟失敗。請手動執行 docker restart escape-falco。`, 'error');
+      }
+    } catch (e) {
+      toast(`切換失敗：${e.message}`, 'error');
+    } finally {
+      document.querySelectorAll('.tier-btn').forEach(b => b.disabled = false);
+      runBtn.disabled = false;
+      switchMsg.style.display = 'none';
+    }
+  });
+});
+
+// 執行
+document.getElementById('run-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('run-btn');
+  const isBaseline = document.getElementById('rt-baseline').checked;
+  const endpoint = isBaseline ? '/lab/baseline-runs' : '/lab/runs';
+
+  btn.disabled = true;
+  document.getElementById('run-btn-loading').style.display = 'inline-block';
+  document.getElementById('run-btn-icon').style.display = 'none';
+
+  try {
+    const run = await apiFetch(endpoint, {
+      method: 'POST',
+      body: JSON.stringify({ scenario_id: scenarioId }),
+    });
+    window.open(`run.html?id=${encodeURIComponent(run.id)}`, '_blank');
+  } catch (e) {
+    toast(`啟動失敗：${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    document.getElementById('run-btn-loading').style.display = 'none';
+    document.getElementById('run-btn-icon').style.display = 'inline-block';
+  }
+});
+
+loadScenario();
+</script>
+</body>
+</html>

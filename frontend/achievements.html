@@ -53,18 +53,27 @@
 <body>
 
 <nav class="navbar">
-  <a class="navbar-brand" href="index.html">🐳 Escape Docker</a>
+  <a class="navbar-brand" href="index.html">
+    <i data-lucide="shield"></i> Escape Docker
+  </a>
   <div class="navbar-links">
-    <a href="map.html">🗺️ Map</a>
-    <a href="scoreboard.html">📊 Score</a>
-    <a href="achievements.html" class="active">🏆 成就</a>
-    <a href="lab/index.html">🧪 Lab</a>
-    <a href="lab/analytics.html">📈 分析</a>
+    <a href="map.html">
+      <i data-lucide="map"></i> 地圖
+    </a>
+    <a href="scoreboard.html">
+      <i data-lucide="trophy"></i> 排行榜
+    </a>
+    <a href="achievements.html" class="active">
+      <i data-lucide="award"></i> 成就
+    </a>
+    <a href="lab/index.html" style="color:var(--text-muted);font-size:0.78rem;margin-left:0.5rem">
+      <i data-lucide="external-link"></i> Security Lab
+    </a>
   </div>
 </nav>
 
 <div class="page">
-  <h1>🏆 成就牆</h1>
+  <h1><i data-lucide="award" style="width:1.2rem;height:1.2rem;vertical-align:middle;margin-right:0.4rem"></i>成就牆</h1>
   <p class="subtitle" id="player-label">完成特定條件即可解鎖</p>
 
   <div class="progress-header" id="progress-header" style="display:none">
@@ -88,6 +97,7 @@
 </div>
 
 <div id="toast-container"></div>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="js/api.js"></script>
 <script>
 async function loadAchievements() {
@@ -135,6 +145,7 @@ async function loadAchievements() {
   }
 }
 loadAchievements();
+lucide.createIcons();
 </script>
 </body>
 </html>

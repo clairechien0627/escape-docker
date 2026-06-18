@@ -3,261 +3,335 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Escape Docker 🐳</title>
+  <title>Edge Container Security Lab</title>
   <link rel="stylesheet" href="css/style.css">
   <style>
-    .hero {
+    /* ── 背景：格線 + 深藍中心光暈 ── */
+    .portal-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(59,130,246,0.18) 0%, transparent 70%),
+        var(--bg-dark);
+    }
+    .portal-bg::after {
+      content: '';
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(30,58,95,0.25) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(30,58,95,0.25) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 90% 80% at 50% 30%, black 20%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 30%, black 20%, transparent 80%);
+    }
+
+    /* ── Portal 版面 ── */
+    .portal-wrap {
+      position: relative; z-index: 1;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      text-align: center;
-      padding: 2rem;
-      position: relative;
-      overflow: hidden;
+      gap: 3rem;
+      padding: 3rem 1.5rem;
     }
-    .hero::before {
-      content: '';
-      position: absolute; inset: 0;
-      background: radial-gradient(ellipse at 50% 50%, #0d2a1a 0%, var(--bg-dark) 65%);
-      z-index: 0;
-    }
-    .hero > * { position: relative; z-index: 1; }
 
-    .hero-logo {
-      font-size: clamp(3rem, 10vw, 6rem);
+    /* ── Hero 標題 ── */
+    .hero-title {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .hero-icon {
+      width: 3.5rem; height: 3.5rem;
+      color: var(--lab-brand);
+      filter: drop-shadow(0 0 16px rgba(96,165,250,0.6));
+    }
+    .hero-title h1 {
+      font-size: clamp(2.2rem, 6vw, 4rem);
       font-weight: 900;
-      color: var(--green);
-      text-shadow: 0 0 20px var(--green), 0 0 40px var(--green-dim);
+      color: var(--lab-brand);
+      text-shadow:
+        0 0 20px rgba(96,165,250,0.7),
+        0 0 60px rgba(59,130,246,0.3);
       letter-spacing: -2px;
       line-height: 1;
-      margin-bottom: 0.5rem;
+      margin: 0;
     }
     .hero-sub {
-      font-size: clamp(0.85rem, 2vw, 1.1rem);
+      font-size: clamp(0.82rem, 1.8vw, 1rem);
       color: var(--text-dim);
-      margin-bottom: 2.5rem;
-      max-width: 600px;
-    }
-    .hero-story {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-left: 3px solid var(--green);
-      border-radius: 8px;
-      padding: 1.25rem 1.5rem;
-      max-width: 600px;
-      text-align: left;
-      font-size: 0.9rem;
-      line-height: 1.7;
-      color: var(--text-dim);
-      margin-bottom: 2.5rem;
-    }
-    .hero-story strong { color: var(--green); }
-    .hero-story em { color: var(--yellow); font-style: normal; }
-
-    .lab-promo {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-left: 3px solid var(--cyan);
-      border-radius: 8px;
-      padding: 1.25rem 1.5rem;
-      max-width: 600px;
-      text-align: left;
-      font-size: 0.85rem;
+      max-width: 520px;
       line-height: 1.6;
-      color: var(--text-dim);
-      margin-top: 2.5rem;
+      margin: 0;
     }
-    .lab-promo .lab-promo-title { color: var(--cyan); font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; }
-    .lab-promo a { color: var(--cyan); }
-    .lab-promo-stats { display: flex; gap: 1.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
-    .lab-promo-stats .stat-num { font-size: 1.3rem; font-weight: 700; color: var(--cyan); }
-    .lab-promo-stats .stat-label { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.1rem; }
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.72rem;
+      color: var(--lab-brand);
+      border: 1px solid rgba(96,165,250,0.3);
+      border-radius: 20px;
+      padding: 0.2rem 0.75rem;
+      background: rgba(59,130,246,0.08);
+    }
+    .hero-tag i { width: 11px; height: 11px; }
 
-    .hero-cta {
+    /* ── Stats 大數字 ── */
+    .portal-stats-row {
       display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
+      gap: 3rem;
       justify-content: center;
-    }
-    .btn-cta {
-      font-size: 1rem;
-      padding: 0.75rem 2rem;
-      border-radius: 8px;
-      border: 2px solid var(--green);
-      background: transparent;
-      color: var(--green);
-      font-family: var(--font-mono);
-      font-weight: 700;
-      cursor: pointer;
-      transition: all 0.2s;
-      text-decoration: none;
-    }
-    .btn-cta:hover {
-      background: var(--green);
-      color: var(--bg-dark);
-      box-shadow: 0 0 20px var(--green-dim);
-      text-decoration: none;
-    }
-    .btn-cta-secondary {
-      border-color: var(--border);
-      color: var(--text-dim);
-    }
-    .btn-cta-secondary:hover {
-      background: var(--bg-hover);
-      color: var(--text-main);
-      box-shadow: none;
-    }
-
-    .stats-row {
-      display: flex;
-      gap: 2rem;
-      margin-top: 3rem;
       flex-wrap: wrap;
-      justify-content: center;
+      align-items: center;
     }
-    .stat-item { text-align: center; }
-    .stat-num { font-size: 2rem; font-weight: 700; color: var(--blue); }
-    .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
-
-    .chapters-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 0.75rem;
-      max-width: 700px;
-      width: 100%;
-      margin-top: 3rem;
-    }
-    .chapter-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1rem;
+    .portal-stat {
       text-align: center;
-      transition: border-color 0.2s;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
     }
-    .chapter-card:hover { border-color: var(--blue); }
-    .chapter-card .icon { font-size: 1.8rem; margin-bottom: 0.4rem; }
-    .chapter-card .ch-name { font-size: 0.8rem; color: var(--text-dim); }
-    .chapter-card .ch-rooms { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.2rem; }
+    .portal-stat .s-num {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--lab-brand);
+      line-height: 1;
+    }
+    .portal-stat .s-label {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .stat-divider {
+      width: 1px;
+      height: 2.5rem;
+      background: var(--border);
+    }
+    @media (max-width: 500px) { .stat-divider { display: none; } .portal-stats-row { gap: 1.5rem; } }
 
-    /* terminal typing animation */
-    .typing-line {
-      font-size: 0.78rem;
-      color: var(--text-dim);
-      margin-top: 2rem;
-      height: 1.2em;
+    /* ── 入口卡片 ── */
+    .portal-cards {
+      display: grid;
+      grid-template-columns: 3fr 2fr;
+      gap: 1rem;
+      max-width: 900px;
+      width: 100%;
     }
-    .cursor { display: inline-block; width: 8px; height: 1em; background: var(--green); animation: blink 1s step-end infinite; vertical-align: text-bottom; }
+    @media (max-width: 640px) { .portal-cards { grid-template-columns: 1fr; } }
+
+    .portal-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      padding: 2rem;
+      border-radius: 14px;
+      text-decoration: none;
+      color: var(--text-main);
+      overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    }
+    .portal-card:hover { transform: translateY(-3px); text-decoration: none; color: var(--text-main); }
+
+    /* Lab 卡片 */
+    .portal-card-lab {
+      background: linear-gradient(135deg, #0f172a 0%, #0d1117 100%);
+      border: 1px solid rgba(59,130,246,0.35);
+      box-shadow: inset 0 0 60px rgba(59,130,246,0.04);
+    }
+    .portal-card-lab::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--lab-accent), rgba(96,165,250,0.3));
+    }
+    .portal-card-lab:hover {
+      border-color: rgba(59,130,246,0.6);
+      box-shadow: 0 8px 40px rgba(59,130,246,0.15), inset 0 0 60px rgba(59,130,246,0.06);
+    }
+
+    /* Game 卡片 */
+    .portal-card-game {
+      background: linear-gradient(135deg, #0d1a0f 0%, #0d1117 100%);
+      border: 1px solid rgba(57,255,20,0.2);
+      box-shadow: inset 0 0 60px rgba(57,255,20,0.02);
+    }
+    .portal-card-game::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--green), rgba(57,255,20,0.2));
+    }
+    .portal-card-game:hover {
+      border-color: rgba(57,255,20,0.4);
+      box-shadow: 0 8px 40px rgba(57,255,20,0.08), inset 0 0 60px rgba(57,255,20,0.04);
+    }
+
+    .card-icon { width: 2.5rem; height: 2.5rem; }
+    .portal-card-lab .card-icon { color: var(--lab-brand); filter: drop-shadow(0 0 8px rgba(96,165,250,0.4)); }
+    .portal-card-game .card-icon { color: var(--green); filter: drop-shadow(0 0 8px rgba(57,255,20,0.3)); }
+
+    .card-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin: 0;
+    }
+    .portal-card-lab .card-title { color: var(--lab-brand); }
+    .portal-card-game .card-title { color: var(--green); }
+
+    .card-desc {
+      font-size: 0.88rem;
+      color: var(--text-dim);
+      line-height: 1.65;
+      flex-grow: 1;
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    .card-sub {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-top: -0.5rem;
+    }
+
+    /* ── 打字動畫 ── */
+    .hero-typing {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      height: 1.2em;
+      font-family: var(--font-mono);
+    }
+    .typing-cursor {
+      display: inline-block;
+      width: 8px; height: 1em;
+      background: var(--lab-brand);
+      animation: blink 1s step-end infinite;
+      vertical-align: text-bottom;
+      margin-left: 2px;
+    }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
   </style>
 </head>
 <body>
 
-<div class="hero">
-  <div class="hero-logo">🐳 Escape Docker</div>
-  <p class="hero-sub">Linux 與 Docker 互動式密室逃脫學習系統</p>
+<div class="portal-bg"></div>
 
-  <div class="hero-story">
-    <p>你是一名系統管理員，在凌晨三點收到一封匿名訊息：</p>
-    <br>
-    <p><strong>「我把所有機密分散藏在 12 個容器裡。
-    找到它們，才能解開最終密碼。」</strong></p>
-    <br>
-    <p>每個容器都是一道謎題。
-    從 <em>Linux 基礎</em> 到 <em>Docker 網路</em>，
-    從 <em>SSH 密鑰</em> 到 <em>docker.sock 控制</em>。</p>
-    <br>
-    <p>時鐘正在滴答作響。<strong>你準備好了嗎？</strong></p>
+<div class="portal-wrap">
+  <!-- Hero 標題 -->
+  <div class="hero-title">
+    <i data-lucide="shield" class="hero-icon"></i>
+    <div class="hero-tag">
+      <i data-lucide="cpu"></i>
+      Linux 與邊緣運算 期末專題
+    </div>
+    <h1>Edge Container Security Lab</h1>
+    <p class="hero-sub text-prose">
+      以 15 種容器錯誤配置為實驗對象，自動化模擬攻擊鏈並量測 Falco 規則式偵測器在邊緣環境中的有效性。
+    </p>
   </div>
 
-  <div class="hero-cta">
-    <a class="btn-cta" href="map.html">🗺️ 進入地圖</a>
-    <a class="btn-cta btn-cta-secondary" href="scoreboard.html">📊 排行榜</a>
-    <a class="btn-cta btn-cta-secondary" href="lab/index.html">🧪 Security Lab</a>
-  </div>
-
-  <div class="chapters-row">
-    <div class="chapter-card">
-      <div class="icon">🌅</div>
-      <div class="ch-name">Chapter 1</div>
-      <div class="ch-rooms">The Awakening<br>3 Rooms · Linux 基礎</div>
+  <!-- 大數字 Stats -->
+  <div class="portal-stats-row">
+    <div class="portal-stat">
+      <div class="s-num">15</div>
+      <div class="s-label">攻擊場景</div>
     </div>
-    <div class="chapter-card">
-      <div class="icon">🌐</div>
-      <div class="ch-name">Chapter 2</div>
-      <div class="ch-rooms">The Network<br>3 Rooms · 系統操作</div>
+    <div class="stat-divider"></div>
+    <div class="portal-stat">
+      <div class="s-num" id="stat-coverage">—</div>
+      <div class="s-label">平均規則覆蓋率</div>
     </div>
-    <div class="chapter-card">
-      <div class="icon">🐳</div>
-      <div class="ch-name">Chapter 3</div>
-      <div class="ch-rooms">Docker Dimension<br>4 Rooms · Docker 核心</div>
+    <div class="stat-divider"></div>
+    <div class="portal-stat">
+      <div class="s-num" id="stat-noise">—</div>
+      <div class="s-label">Full / Basic 雜訊比</div>
     </div>
-    <div class="chapter-card">
-      <div class="icon">🔥</div>
-      <div class="ch-name">Chapter 4</div>
-      <div class="ch-rooms">The Deep End<br>2 Rooms · 進階操作</div>
-    </div>
-    <div class="chapter-card">
-      <div class="icon">💀</div>
-      <div class="ch-name">Final Boss</div>
-      <div class="ch-rooms">The Escape<br>docker.sock</div>
-    </div>
-    <div class="chapter-card">
-      <div class="icon">🔮</div>
-      <div class="ch-name">Secret Rooms</div>
-      <div class="ch-rooms">×2 Hidden<br>找得到才能進</div>
+    <div class="stat-divider"></div>
+    <div class="portal-stat">
+      <div class="s-num" id="stat-ran">—</div>
+      <div class="s-label">已執行場景</div>
     </div>
   </div>
 
-  <div class="stats-row">
-    <div class="stat-item">
-      <div class="stat-num">15</div>
-      <div class="stat-label">關卡</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-num">10</div>
-      <div class="stat-label">成就</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-num">3650</div>
-      <div class="stat-label">最高分</div>
-    </div>
-    <div class="stat-item">
-      <div class="stat-num">~2hr</div>
-      <div class="stat-label">預估時間</div>
-    </div>
+  <!-- 入口卡片 -->
+  <div class="portal-cards">
+    <a class="portal-card portal-card-lab" href="lab/index.html">
+      <i data-lucide="flask-conical" class="card-icon"></i>
+      <h2 class="card-title">Security Lab</h2>
+      <p class="card-desc">
+        選擇攻擊場景，執行腳本，即時觀察 Falco 偵測反應。
+        比較 Basic（8 規則）與 Full（31 規則）兩個 Tier 的偵測率、誤報率與邊緣資源成本。
+      </p>
+      <span class="btn btn-lab-primary" style="align-self:flex-start;margin-top:0.5rem">
+        進入實驗室
+        <i data-lucide="arrow-right" style="width:14px;height:14px;margin-left:6px"></i>
+      </span>
+    </a>
+    <a class="portal-card portal-card-game" href="map.html">
+      <i data-lucide="gamepad-2" class="card-icon"></i>
+      <h2 class="card-title">Story Mode</h2>
+      <p class="card-sub">Escape Docker</p>
+      <p class="card-desc">
+        親自操作體驗 15 種容器錯誤配置的互動密室逃脫遊戲。
+      </p>
+      <span class="btn btn-success" style="align-self:flex-start;margin-top:0.5rem">
+        開始遊戲
+        <i data-lucide="arrow-right" style="width:14px;height:14px;margin-left:6px"></i>
+      </span>
+    </a>
   </div>
 
-  <div class="lab-promo">
-    <div class="lab-promo-title">🧪 Edge Container Security Lab</div>
-    <p>同一套 15 個容器環境，也是一個<strong style="color:var(--cyan)">可重複執行的攻擊鏈實驗平台</strong>：
-    選擇場景、按下執行，即時觀看攻擊腳本逐步取得權限，並對照
-    Falco 的偵測告警與彙整後的偵測率分析——適合用來研究「規則式偵測在邊緣容器環境下的有效性」。</p>
-    <div class="lab-promo-stats" id="lab-promo-stats">
-      <div class="stat-item"><div class="stat-num" id="lab-promo-ran">—</div><div class="stat-label">場景已執行</div></div>
-      <div class="stat-item"><div class="stat-num" id="lab-promo-coverage">—</div><div class="stat-label">平均規則覆蓋率</div></div>
-      <div class="stat-item"><div class="stat-num" id="lab-promo-fp">—</div><div class="stat-label">平均誤報率</div></div>
-    </div>
-    <p style="margin-top:0.5rem"><a href="lab/index.html">進入 Lab →</a> · <a href="lab/analytics.html">查看分析 →</a></p>
-  </div>
-
-  <div class="typing-line" id="typing-line">$ <span id="typing-text"></span><span class="cursor"></span></div>
+  <!-- 打字動畫 -->
+  <div class="hero-typing">$ <span id="typing-text"></span><span class="typing-cursor"></span></div>
 </div>
 
 <div id="toast-container"></div>
 <script src="js/api.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script>
+  lucide.createIcons();
+
+  (async function loadStats() {
+    try {
+      const matrix = await apiFetch('/lab/analytics/detection-matrix');
+      const ranScenarios = matrix.filter(m => m.runs > 0);
+      const coverableScenarios = matrix.filter(m => m.rule_coverage != null);
+      const avgCoverage = coverableScenarios.length
+        ? coverableScenarios.reduce((s, m) => s + m.rule_coverage, 0) / coverableScenarios.length
+        : null;
+
+      document.getElementById('stat-ran').textContent = ranScenarios.length + '/15';
+      if (avgCoverage != null) {
+        document.getElementById('stat-coverage').textContent = Math.round(avgCoverage * 100) + '%';
+      }
+
+      const [bm, fm] = await Promise.all([
+        apiFetch('/lab/analytics/detection-matrix?tier=basic').catch(() => null),
+        apiFetch('/lab/analytics/detection-matrix?tier=full').catch(() => null),
+      ]);
+      if (bm && fm) {
+        const bRates = bm.filter(m => m.baseline_alert_rate_per_min != null);
+        const fRates = fm.filter(m => m.baseline_alert_rate_per_min != null);
+        const avgB = bRates.length ? bRates.reduce((s, m) => s + m.baseline_alert_rate_per_min, 0) / bRates.length : 0;
+        const avgF = fRates.length ? fRates.reduce((s, m) => s + m.baseline_alert_rate_per_min, 0) / fRates.length : 0;
+        if (avgB > 0 && avgF > 0) {
+          document.getElementById('stat-noise').textContent = '×' + (avgF / avgB).toFixed(1);
+        }
+      }
+      lucide.createIcons();
+    } catch (e) { /* silent */ }
+  })();
+
   const lines = [
-    'docker compose up -d',
-    'ls -la .hidden/',
-    'sudo -l',
-    'docker ps -a',
+    'docker exec -it room6 bash',
     'curl --unix-socket /var/run/docker.sock http://localhost/containers/json',
-    'grep "Accepted" /var/log/auth.log | awk \'{print $11}\'',
-    'ssh-keygen -t ed25519 -C "ctf_player"',
+    'sudo -l && cat /etc/sudoers',
     'find / -perm -u=s -type f 2>/dev/null',
+    'crontab -l | grep -v "^#"',
   ];
   let li = 0, ci = 0, deleting = false;
   const el = document.getElementById('typing-text');
@@ -270,30 +344,9 @@
       el.textContent = line.slice(0, --ci);
       if (ci <= 0) { deleting = false; li++; setTimeout(typeLoop, 400); return; }
     }
-    setTimeout(typeLoop, deleting ? 30 : 60);
+    setTimeout(typeLoop, deleting ? 28 : 55);
   }
   typeLoop();
-
-  (async function loadLabPromoStats() {
-    try {
-      const matrix = await apiFetch('/lab/analytics/detection-matrix');
-      const ranScenarios = matrix.filter((m) => m.runs > 0);
-      const coverableScenarios = matrix.filter((m) => m.rule_coverage != null);
-      const avgRuleCoverage = coverableScenarios.length
-        ? coverableScenarios.reduce((sum, m) => sum + m.rule_coverage, 0) / coverableScenarios.length
-        : null;
-      const baselineScenarios = matrix.filter((m) => m.baseline_runs > 0);
-      const avgFalsePositive = baselineScenarios.length
-        ? baselineScenarios.reduce((sum, m) => sum + m.false_positive_rate, 0) / baselineScenarios.length
-        : null;
-
-      document.getElementById('lab-promo-ran').textContent = `${ranScenarios.length} / ${matrix.length}`;
-      document.getElementById('lab-promo-coverage').textContent = avgRuleCoverage != null ? `${Math.round(avgRuleCoverage * 100)}%` : '—';
-      document.getElementById('lab-promo-fp').textContent = avgFalsePositive != null ? `${Math.round(avgFalsePositive * 100)}%` : '—';
-    } catch (e) {
-      // Lab 分析資料載入失敗時，保留 "—" 預設值即可，不影響主頁其他內容
-    }
-  })();
 </script>
 </body>
 </html>

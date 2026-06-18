@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Edge Container Security Lab — Escape Docker</title>
+  <title>實驗控制台 — EdgeSec Lab</title>
   <link rel="stylesheet" href="../css/style.css">
   <style>
     .page { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
-    h1 { font-size: 1.4rem; color: var(--green); margin-bottom: 0.25rem; }
+    h1 { font-size: 1.4rem; color: var(--lab-brand); margin-bottom: 0.25rem; }
     .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 1.5rem; }
     .section-title { font-size: 1rem; font-weight: 700; color: var(--text-main); margin: 1.5rem 0 0.75rem; }
 
@@ -24,12 +24,16 @@
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .scenario-card:hover {
+      border-color: var(--lab-brand, #4a9eff);
+      box-shadow: 0 2px 12px rgba(74,158,255,0.10);
     }
     .scenario-card h3 { font-size: 0.95rem; color: var(--text-main); }
     .scenario-id { font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono); }
     .scenario-outcome { font-size: 0.78rem; color: var(--text-dim); flex-grow: 1; }
     .scenario-refs { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-    .scenario-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 
     .toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
     .toolbar .hint { font-size: 0.78rem; color: var(--text-dim); margin-right: auto; }
@@ -60,53 +64,167 @@
     .status-failed, .status-error, .status-timeout { color: var(--red); }
     .status-running, .status-starting { color: var(--blue); }
     .flag-val { font-size: 0.7rem; color: var(--cyan); font-family: monospace; }
+
+    details#history-details > summary { outline: none; }
+    details#history-details > summary::-webkit-details-marker { display: none; }
+
+    /* ── Tier 狀態橫條 ── */
+    .tier-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: var(--bg-card);
+      border: 1px solid var(--lab-border);
+      border-radius: 8px;
+      padding: 0.75rem 1.1rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .tier-bar-label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      flex-shrink: 0;
+    }
+    .tier-bar-label i { width: 13px; height: 13px; }
+    .tier-name { font-size: 0.9rem; font-weight: 700; white-space: nowrap; }
+    .tier-desc {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      flex-grow: 1;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .tier-progress { font-size: 0.75rem; color: var(--text-dim); }
+
+    /* ── About 移入 page 後的樣式調整 ── */
+    .page .about-section {
+      margin: 0 0 1.25rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
   </style>
 </head>
 <body>
 
-<nav class="navbar">
-  <a class="navbar-brand" href="../index.html">🐳 Escape Docker</a>
+<nav class="navbar lab-navbar">
+  <a class="navbar-brand" href="../index.html">
+    <i data-lucide="flask-conical"></i> EdgeSec Lab
+  </a>
   <div class="navbar-links">
-    <a href="../map.html">🗺️ Map</a>
-    <a href="../scoreboard.html">📊 Score</a>
-    <a href="../achievements.html">🏆 成就</a>
-    <a href="index.html" class="active">🧪 Lab</a>
-    <a href="analytics.html">📈 分析</a>
+    <a href="index.html" class="active">
+      <i data-lucide="layout-grid"></i> 實驗控制台
+    </a>
+    <a href="analytics.html">
+      <i data-lucide="bar-chart-2"></i> 分析儀表板
+    </a>
+    <a href="../index.html" style="color:var(--text-muted);font-size:0.78rem">
+      <i data-lucide="external-link"></i> Story Mode
+    </a>
   </div>
 </nav>
 
 <div class="page">
-  <h1>🧪 Edge Container Security Lab</h1>
-  <p class="subtitle">每個情境模擬一種容器逃逸／提權手法：選擇情境並執行，即可即時觀察攻擊腳本的每一步，以及對應的 Falco 告警。</p>
+  <h1>實驗控制台</h1>
+  <p class="subtitle">選擇容器攻擊場景，執行攻擊腳本，即時觀察 Falco 偵測反應。</p>
 
-  <div class="toolbar">
-    <span class="hint">批次操作會依序對 15 個場景執行，期間請勿關閉此頁面</span>
-    <span id="tier-status" class="badge badge-dim" title="目前記錄的 Falco 規則 tier；切換後需手動以對應旗標重啟 escape-falco 容器使規則生效" style="align-self:center;cursor:default">⏳ Tier 載入中</span>
-    <button class="btn" id="switch-tier-btn" title="記錄目前 Falco 啟用的規則 tier，供後續執行的 run 標記使用">切換 Tier</button>
-    <span id="bulk-progress" class="dim-cell" style="font-size: 0.78rem; align-self: center;"></span>
-    <button class="btn" id="run-all-baselines-btn" title="依序對 15 個場景各執行一次 20 秒的 Baseline（不執行攻擊，只收集 Falco 告警），用於計算誤報率（false_positive_rate），結果可在「📈 分析」頁查看">🔬 執行全部 Baseline (15×20s)</button>
-    <a class="btn btn-primary" href="batch-run.html" title="開啟即時批次執行頁面，每個場景的步驟與 Falco 告警即時顯示">▶ 執行全部場景 (15)</a>
+  <!-- About - 移入 page，預設收起 -->
+  <div class="about-section" id="about-section">
+    <button class="about-toggle" onclick="toggleAbout()">
+      <i data-lucide="info"></i>
+      這個平台在做什麼？
+      <i data-lucide="chevron-up" class="about-chevron" id="about-chevron"></i>
+    </button>
+    <div class="about-body" id="about-body">
+      <div class="about-steps">
+        <div class="about-step">
+          <i data-lucide="mouse-pointer-click"></i>
+          <strong>選擇場景</strong>
+          <p class="text-prose">每個場景模擬一種真實的容器錯誤配置，點擊卡片查看詳情並設定執行參數。</p>
+        </div>
+        <div class="about-step">
+          <i data-lucide="radar"></i>
+          <strong>執行並觀察</strong>
+          <p class="text-prose">攻擊腳本自動執行，即時顯示每個步驟的輸出，以及 Falco 偵測器的告警反應。</p>
+        </div>
+        <div class="about-step">
+          <i data-lucide="bar-chart-2"></i>
+          <strong>查看分析</strong>
+          <p class="text-prose">執行完成後可查看偵測率、規則覆蓋率與誤報率，並比較 Basic / Full 規則集的差異。</p>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <div class="section-title">📋 場景目錄</div>
+  <!-- Tier 狀態橫條 -->
+  <div class="tier-bar">
+    <div class="tier-bar-label">
+      <i data-lucide="layers"></i>
+      目前規則集
+    </div>
+    <span class="tier-name" id="tier-name">載入中…</span>
+    <span class="tier-desc" id="tier-desc"></span>
+    <span class="tier-progress" id="bulk-progress"></span>
+    <button class="btn btn-lab btn-sm" id="switch-tier-btn">切換 Tier</button>
+  </div>
+
+  <!-- 批次操作工具列 -->
+  <div class="toolbar">
+    <span class="hint">批次操作依序對 15 個場景執行，期間請勿關閉此頁面</span>
+    <button class="btn btn-lab" id="run-all-baselines-btn">
+      <i data-lucide="activity"></i> 全部 Baseline (15×20s)
+    </button>
+    <a class="btn btn-lab-primary" href="batch-run.html">
+      <i data-lucide="play"></i> 批次執行全部場景
+    </a>
+  </div>
+
+  <div class="section-title"><i data-lucide="layout-grid" style="width:15px;height:15px;vertical-align:middle;margin-right:4px"></i> 場景目錄</div>
   <div class="scenario-grid" id="scenario-grid">
     <p class="text-dim">載入中…</p>
   </div>
 
-  <div class="section-title">🕓 執行歷史</div>
-  <div class="card">
-    <table id="runs-table">
-      <thead>
-        <tr><th>場景</th><th>Tier / 類型</th><th>狀態</th><th>FLAG</th><th>耗時</th><th>開始時間</th><th></th></tr>
-      </thead>
-      <tbody><tr><td colspan="6" class="text-dim">載入中…</td></tr></tbody>
-    </table>
-  </div>
+  <details id="history-details">
+    <summary class="section-title" style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem;user-select:none">
+      <i data-lucide="clock" style="width:15px;height:15px"></i>
+      執行歷史
+      <span id="runs-count" class="badge badge-dim" style="font-size:0.7rem"></span>
+    </summary>
+    <div class="card" style="margin-top:0.5rem">
+      <table id="runs-table">
+        <thead>
+          <tr><th>場景</th><th>Tier / 類型</th><th>狀態</th><th>FLAG</th><th>耗時</th><th>開始時間</th><th></th></tr>
+        </thead>
+        <tbody><tr><td colspan="7" class="text-dim">載入中…</td></tr></tbody>
+      </table>
+    </div>
+  </details>
 </div>
 
 <div id="toast-container"></div>
 <script src="../js/api.js"></script>
 <script>
+let _aboutOpen = false;
+// About 預設收起
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('about-body').style.display = 'none';
+  document.getElementById('about-chevron').classList.add('about-chevron-collapsed');
+});
+function toggleAbout() {
+  _aboutOpen = !_aboutOpen;
+  document.getElementById('about-body').style.display = _aboutOpen ? 'block' : 'none';
+  const chevron = document.getElementById('about-chevron');
+  if (_aboutOpen) chevron.classList.remove('about-chevron-collapsed');
+  else chevron.classList.add('about-chevron-collapsed');
+}
+const _chevronStyle = document.createElement('style');
+_chevronStyle.textContent = '.about-chevron-collapsed { transform: rotate(180deg); }';
+document.head.appendChild(_chevronStyle);
+
 function pct(rate) {
   return rate == null ? null : Math.round(rate * 100);
 }
@@ -126,7 +244,7 @@ function formatLatencyShort(ms) {
 }
 
 // 場景卡片下方的「上次結果」摘要：來自 GET /lab/analytics/detection-matrix，
-// 讓使用者不用切到「📈 分析」頁就能看出哪些場景已經跑過、偵測效果如何。
+// 讓使用者不用切到「分析」頁就能看出哪些場景已經跑過、偵測效果如何。
 function statsRow(m) {
   if (!m || m.runs === 0) {
     return '<div class="scenario-stats dim-cell">尚未執行過</div>';
@@ -136,12 +254,18 @@ function statsRow(m) {
   const fp = pct(m.false_positive_rate);
   const parts = [
     `<span class="stat-pill" title="執行次數">▶ ${m.runs} 次</span>`,
-    `<span class="stat-pill ${pillClass(detection)}" title="Falco 偵測率：該次執行期間是否收到任一告警">🛰 偵測 ${detection == null ? '—' : detection + '%'}</span>`,
-    `<span class="stat-pill ${pillClass(coverage)}" title="規則覆蓋率：falco_rule_refs 中實際被命中的比例">📐 覆蓋 ${coverage == null ? '—' : coverage + '%'}</span>`,
-    `<span class="stat-pill" title="偵測延遲：從發起執行到第一筆對應告警送達的時間">⏱ ${formatLatencyShort(m.avg_detection_latency_ms)}</span>`,
-    `<span class="stat-pill ${pillClass(fp, { invert: true })}" title="誤報率：${m.baseline_runs ? `${m.false_positive_rules.join('、') || '無誤報規則'}（已跑 ${m.baseline_runs} 次 Baseline）` : '尚未執行過 Baseline'}">⚠ 誤報 ${fp == null ? '—' : fp + '%'}</span>`,
+    `<span class="stat-pill ${pillClass(detection)}" title="Falco 偵測率：該次執行期間是否收到任一告警">偵測 ${detection == null ? '—' : detection + '%'}</span>`,
+    `<span class="stat-pill ${pillClass(coverage)}" title="規則覆蓋率：falco_rule_refs 中實際被命中的比例">覆蓋 ${coverage == null ? '—' : coverage + '%'}</span>`,
+    m.avg_detection_latency_ms != null ? `<span class="stat-pill" title="偵測延遲：從發起執行到第一筆對應 Falco 告警送達的時間">延遲 ${formatLatencyShort(m.avg_detection_latency_ms)}</span>` : '',
+    `<span class="stat-pill ${pillClass(fp, { invert: true })}" title="誤報率：${m.baseline_runs ? `${m.false_positive_rules.join('、') || '無誤報規則'}（已跑 ${m.baseline_runs} 次 Baseline）` : '尚未執行過 Baseline'}">誤報 ${fp == null ? '—' : fp + '%'}</span>`,
   ];
   return `<div class="scenario-stats">${parts.join('')}</div>`;
+}
+
+function statusDot(m) {
+  if (!m || m.runs === 0) return '<span class="status-dot gray" title="尚未執行"></span>';
+  if (m.detection_rate >= 0.5) return '<span class="status-dot green" title="偵測成功"></span>';
+  return '<span class="status-dot red" title="未偵測到"></span>';
 }
 
 async function loadScenarios() {
@@ -154,35 +278,30 @@ async function loadScenarios() {
     const matrixById = new Map(matrix.map((m) => [m.scenario_id, m]));
 
     grid.innerHTML = scenarios.map((s) => `
-      <div class="scenario-card">
-        <div class="scenario-id">${s.id} · ${s.container}</div>
+      <a href="scenario.html?id=${s.id}" class="scenario-card" style="text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:0.5rem">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="scenario-id">${s.id} · ${s.container}</div>
+          ${statusDot(matrixById.get(s.id))}
+        </div>
         <h3>${s.title}</h3>
         <div class="scenario-refs">
           <span class="badge badge-blue">${s.vuln_type}</span>
-          ${(s.falco_rule_refs || []).map((r) => `<span class="badge badge-dim">${r}</span>`).join('')}
         </div>
         <div class="scenario-outcome">${s.expected_outcome}</div>
         ${statsRow(matrixById.get(s.id))}
-        <div class="scenario-actions">
-          <button class="btn baseline-btn" data-scenario-id="${s.id}" title="不執行攻擊，靜置 20 秒收集 Falco 告警，用於計算誤報率（false_positive_rate）">🔬 Baseline (20s)</button>
-          <button class="btn btn-primary run-btn" data-scenario-id="${s.id}">▶ 執行</button>
+        <div class="scenario-card-enter">
+          <i data-lucide="arrow-right"></i> 查看詳情 &amp; 執行
         </div>
-      </div>
+      </a>
     `).join('');
-    grid.querySelectorAll('.run-btn').forEach((btn) => {
-      btn.addEventListener('click', () => runScenario(btn.dataset.scenarioId, btn));
-    });
-    grid.querySelectorAll('.baseline-btn').forEach((btn) => {
-      btn.addEventListener('click', () => runBaseline(btn.dataset.scenarioId, btn));
-    });
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch (e) {
     grid.innerHTML = `<p class="text-red">載入場景失敗：${e.message}</p>`;
   }
 }
 
 async function runScenario(scenarioId, btn) {
-  btn.disabled = true;
-  btn.textContent = '啟動中…';
+  if (btn) { btn.disabled = true; btn.textContent = '啟動中…'; }
   try {
     const run = await apiFetch('/lab/runs', {
       method: 'POST',
@@ -191,14 +310,12 @@ async function runScenario(scenarioId, btn) {
     window.location.href = `run.html?id=${encodeURIComponent(run.id)}`;
   } catch (e) {
     toast(`執行失敗：${e.message}`, 'error');
-    btn.disabled = false;
-    btn.textContent = '▶ 執行';
+    if (btn) { btn.disabled = false; btn.textContent = '執行'; }
   }
 }
 
 async function runBaseline(scenarioId, btn) {
-  btn.disabled = true;
-  btn.textContent = '啟動中…';
+  if (btn) { btn.disabled = true; btn.textContent = '啟動中…'; }
   try {
     const run = await apiFetch('/lab/baseline-runs', {
       method: 'POST',
@@ -207,8 +324,7 @@ async function runBaseline(scenarioId, btn) {
     window.location.href = `run.html?id=${encodeURIComponent(run.id)}`;
   } catch (e) {
     toast(`Baseline 執行失敗：${e.message}`, 'error');
-    btn.disabled = false;
-    btn.textContent = '🔬 Baseline (20s)';
+    if (btn) { btn.disabled = false; btn.textContent = 'Baseline (20s)'; }
   }
 }
 
@@ -261,32 +377,39 @@ document.getElementById('run-all-baselines-btn').addEventListener('click', () =>
   });
 });
 
-function statusLabel(status) {
+function statusBadge(status) {
+  const dot = (c) => `<span style="width:6px;height:6px;border-radius:50%;background:${c};display:inline-block;flex-shrink:0"></span>`;
+  const w   = (c, t) => `<span style="display:inline-flex;align-items:center;gap:0.35rem;color:${c};font-size:0.78rem">${dot(c)}${t}</span>`;
   const map = {
-    success: '✅ success', failed: '❌ failed', error: '⚠️ error',
-    timeout: '⏱️ timeout', running: '🔵 running', starting: '🔵 starting',
+    success:  w('var(--green)',  '成功'),
+    failed:   w('var(--red)',    '失敗'),
+    error:    w('var(--red)',    '錯誤'),
+    timeout:  w('var(--yellow)', '超時'),
+    running:  w('var(--blue)',   '執行中'),
+    starting: w('var(--blue)',   '啟動中'),
   };
-  return map[status] || status || '—';
+  return map[status] || `<span style="color:var(--text-muted);font-size:0.78rem">${status || '—'}</span>`;
 }
 
 async function loadRuns() {
   const tbody = document.querySelector('#runs-table tbody');
   try {
     const runs = await apiFetch('/lab/runs');
+    document.getElementById('runs-count').textContent = runs.length > 0 ? `${runs.length} 筆` : '';
     if (runs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-dim">尚無執行紀錄</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="text-dim">尚無執行紀錄</td></tr>';
       return;
     }
     function tierTypeCell(r) {
       const isBaseline = r.type === 'baseline';
       const t = r.falco_tier;
       const tierPart = t === 'basic'
-        ? '<span style="color:#60c8ff;font-size:0.7rem">🔵 Basic</span>'
+        ? '<span style="color:var(--lab-brand);font-size:0.7rem">Basic</span>'
         : t === 'full'
-          ? '<span style="color:var(--green);font-size:0.7rem">🟢 Full</span>'
+          ? '<span style="color:var(--cyan);font-size:0.7rem">Full</span>'
           : '<span style="color:var(--text-muted);font-size:0.7rem">—</span>';
       const typePart = isBaseline
-        ? '<span style="color:var(--text-muted);font-size:0.7rem"> 🔬</span>'
+        ? '<span style="color:var(--text-muted);font-size:0.7rem"> Baseline</span>'
         : '';
       return tierPart + typePart;
     }
@@ -294,7 +417,7 @@ async function loadRuns() {
       <tr>
         <td>${r.scenario_id}</td>
         <td>${tierTypeCell(r)}</td>
-        <td class="status-${r.status}">${statusLabel(r.status)}</td>
+        <td>${statusBadge(r.status)}</td>
         <td class="flag-val">${r.flag_found || '—'}</td>
         <td>${r.duration_ms != null ? r.duration_ms + ' ms' : '—'}</td>
         <td style="font-size:0.72rem;color:var(--text-dim)">${r.started_at ? new Date(r.started_at).toLocaleString() : '—'}</td>
@@ -302,29 +425,34 @@ async function loadRuns() {
       </tr>
     `).join('');
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-red">載入失敗：${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="text-red">載入失敗：${e.message}</td></tr>`;
   }
 }
 
 async function loadTierStatus() {
-  const badge = document.getElementById('tier-status');
+  const nameEl = document.getElementById('tier-name');
+  const descEl = document.getElementById('tier-desc');
   try {
     const { tier } = await apiFetch('/lab/falco-tier');
-    badge.textContent = tier === 'basic' ? '🔵 Basic Tier (8 規則)' : '🟢 Full Tier (31 規則)';
-    badge.className = 'badge';
-    badge.style.cssText = tier === 'basic'
-      ? 'align-self:center;cursor:default;border-color:#60c8ff;color:#60c8ff'
-      : 'align-self:center;cursor:default;border-color:var(--green);color:var(--green)';
+    if (tier === 'basic') {
+      nameEl.textContent = 'Basic Tier（8 規則）';
+      nameEl.style.color = 'var(--lab-brand)';
+      descEl.textContent = '高信度核心規則 · 誤報率低 · 適合邊緣部署';
+    } else {
+      nameEl.textContent = 'Full Tier（31 規則）';
+      nameEl.style.color = 'var(--cyan)';
+      descEl.textContent = '覆蓋範圍更廣 · 誤報率較高 · 適合完整偵測研究';
+    }
   } catch {
-    badge.textContent = '⚠ Tier 未知';
-    badge.className = 'badge';
-    badge.style.cssText = 'align-self:center;cursor:default;border-color:var(--red);color:var(--red)';
+    nameEl.textContent = 'Tier 未知';
+    nameEl.style.color = 'var(--red)';
+    if (descEl) descEl.textContent = '無法取得 Tier 狀態';
   }
 }
 
 document.getElementById('switch-tier-btn').addEventListener('click', async () => {
-  const badge = document.getElementById('tier-status');
-  const isBasic = badge.textContent.includes('Basic');
+  const nameEl = document.getElementById('tier-name');
+  const isBasic = nameEl.textContent.includes('Basic');
   const nextTier = isBasic ? 'full' : 'basic';
   const nextLabel = nextTier === 'basic' ? 'Basic Tier（8 條核心規則）' : 'Full Tier（31 條規則）';
   if (!window.confirm(`切換至 ${nextLabel}？\n\nFalco 容器將自動重啟（約 5-10 秒），期間告警暫停，重啟完成後立即生效。`)) return;
@@ -352,5 +480,7 @@ loadRuns();
 loadTierStatus();
 setInterval(loadRuns, 10000);
 </script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>lucide.createIcons();</script>
 </body>
 </html>

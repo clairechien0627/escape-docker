@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>實驗執行紀錄 — Escape Docker Lab</title>
+  <title>執行紀錄 — EdgeSec Lab</title>
   <link rel="stylesheet" href="../css/style.css">
   <style>
     .page { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
-    h1 { font-size: 1.3rem; color: var(--green); margin-bottom: 0.25rem; }
+    h1 { font-size: 1.3rem; color: var(--lab-brand); margin-bottom: 0.25rem; }
     .run-meta { color: var(--text-dim); font-size: 0.82rem; margin-bottom: 1rem; font-family: var(--font-mono); }
 
     .status-success  { color: var(--green); }
@@ -41,7 +41,7 @@
       word-break: break-all;
       font-size: 0.78rem;
       color: var(--text-dim);
-      max-height: 220px;
+      max-height: 150px;
       overflow-y: auto;
     }
 
@@ -70,6 +70,19 @@
     .result-row .label { color: var(--text-muted); }
     .flag-val { font-family: monospace; color: var(--cyan); }
 
+    /* ── Step 狀態 ── */
+    .step { transition: border-color 0.2s; }
+    .step.step-done-ok  { border-color: rgba(57,255,20,0.35); }
+    .step.step-done-bad { border-color: rgba(248,81,73,0.4); }
+    .step.step-running  { border-color: var(--lab-border); }
+    .step-num {
+      font-size: 0.68rem; color: var(--text-muted);
+      font-family: var(--font-mono); min-width: 1.4em; flex-shrink: 0;
+    }
+    .step-icon { font-size: 0.85rem; flex-shrink: 0; line-height: 1; }
+    .steps-count { font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono); }
+
+    /* ── Alert 嚴重性 ── */
     .alert-item {
       border-left: 3px solid var(--orange);
       padding: 0.4rem 0.6rem;
@@ -78,26 +91,65 @@
       background: var(--bg-hover);
       border-radius: 0 6px 6px 0;
     }
-    .alert-item .alert-rule { color: var(--orange); font-weight: 700; }
-    .alert-item .alert-output { color: var(--text-dim); margin-top: 0.2rem; word-break: break-all; }
+    .alert-item.sev-critical { border-left-color: var(--red); }
+    .alert-item.sev-critical .alert-rule { color: var(--red); }
+    .alert-item.sev-warning  { border-left-color: var(--orange); }
+    .alert-item.sev-warning  .alert-rule { color: var(--orange); }
+    .alert-item.sev-notice   { border-left-color: var(--blue); }
+    .alert-item.sev-notice   .alert-rule { color: var(--blue); }
+    .alert-item.sev-info     { border-left-color: var(--text-muted); }
+    .alert-item.sev-info     .alert-rule { color: var(--text-dim); }
+
+    .alert-header {
+      display: flex; align-items: baseline;
+      justify-content: space-between; gap: 0.5rem;
+    }
+    .alert-rule { font-weight: 700; }
+    .alert-time {
+      font-size: 0.68rem; color: var(--text-muted);
+      font-family: var(--font-mono); flex-shrink: 0;
+    }
+    .alert-sev {
+      font-size: 0.62rem; font-weight: 700; letter-spacing: 0.5px;
+      opacity: 0.7; margin-bottom: 0.12rem; display: block;
+    }
+    .alert-output { color: var(--text-dim); margin-top: 0.2rem; word-break: break-all; }
     .empty-hint { color: var(--text-muted); font-size: 0.82rem; }
+
+    /* result-summary ri- elements */
+    .ri-label { font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    .ri-value { font-size: 0.88rem; color: var(--text-main); display: flex; align-items: center; gap: 0.3rem; }
   </style>
 </head>
-<body>
+<body class="lab-page">
 
-<nav class="navbar">
-  <a class="navbar-brand" href="../index.html">🐳 Escape Docker</a>
+<nav class="navbar lab-navbar">
+  <a class="navbar-brand" href="../index.html">
+    <i data-lucide="flask-conical"></i> EdgeSec Lab
+  </a>
   <div class="navbar-links">
-    <a href="../map.html">🗺️ Map</a>
-    <a href="../scoreboard.html">📊 Score</a>
-    <a href="../achievements.html">🏆 成就</a>
-    <a href="index.html" class="active">🧪 Lab</a>
-    <a href="analytics.html">📈 分析</a>
+    <a href="index.html">
+      <i data-lucide="layout-grid"></i> 實驗控制台
+    </a>
+    <a href="analytics.html">
+      <i data-lucide="bar-chart-2"></i> 分析儀表板
+    </a>
   </div>
 </nav>
 
+<div class="run-banner" id="run-banner">
+  <span class="run-banner-title" id="banner-scenario">載入中…</span>
+  <span class="banner-sep">·</span>
+  <span id="banner-tier">Falco Tier: —</span>
+  <span class="banner-sep">·</span>
+  <span id="banner-type">Exploit</span>
+  <span class="banner-sep">·</span>
+  <span id="banner-progress">等待執行…</span>
+  <span id="banner-spinner" class="spinner" style="display:none;margin-left:4px"></span>
+</div>
+
 <div class="page">
-  <h1>🧪 <span id="scenario-title">實驗執行紀錄</span></h1>
+  <h1><i data-lucide="flask-conical" style="width:18px;height:18px;vertical-align:middle;margin-right:6px"></i><span id="scenario-title">實驗執行紀錄</span></h1>
   <div class="run-meta">
     run id: <span id="run-id">—</span> ·
     狀態：<span id="run-status">連線中…</span>
@@ -105,7 +157,10 @@
 
   <div class="layout">
     <div>
-      <div class="section-title">📜 執行步驟（即時）</div>
+      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span><i data-lucide="scroll" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i> 執行步驟</span>
+        <span class="steps-count" id="steps-count"></span>
+      </div>
       <div id="steps"><p class="empty-hint">等待第一個步驟…</p></div>
 
       <div class="result-box" id="result-box">
@@ -117,8 +172,41 @@
     </div>
 
     <div>
-      <div class="section-title">🛡️ Falco 告警（即時）</div>
+      <div class="section-title"><i data-lucide="shield-alert" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i> Falco 告警（即時）</div>
       <div id="alerts"><p class="empty-hint">尚無告警</p></div>
+    </div>
+  </div>
+
+  <div class="result-summary card" id="result-summary" style="display:none">
+    <h3><i data-lucide="clipboard-check" style="width:16px;height:16px;vertical-align:middle;margin-right:6px"></i>實驗結果摘要</h3>
+    <div class="result-grid" id="result-grid">
+      <div class="result-item" id="rs-flag">
+        <span class="ri-label">FLAG</span>
+        <span class="ri-value">—</span>
+      </div>
+      <div class="result-item" id="rs-detection">
+        <span class="ri-label">Falco 偵測</span>
+        <span class="ri-value">—</span>
+      </div>
+      <div class="result-item" id="rs-latency">
+        <span class="ri-label">偵測延遲</span>
+        <span class="ri-value">—</span>
+      </div>
+      <div class="result-item" id="rs-alerts">
+        <span class="ri-label">告警數</span>
+        <span class="ri-value">—</span>
+      </div>
+    </div>
+    <div class="result-actions">
+      <button class="btn btn-lab" id="rs-rerun">
+        <i data-lucide="rotate-ccw"></i> 再跑一次
+      </button>
+      <a class="btn btn-lab-primary" id="rs-analytics" href="analytics.html" target="_blank">
+        <i data-lucide="bar-chart-2"></i> 查看完整分析
+      </a>
+      <a class="btn btn-ghost" href="index.html">
+        <i data-lucide="layout-grid"></i> 回到場景目錄
+      </a>
     </div>
   </div>
 </div>
@@ -137,6 +225,9 @@ const resultBox = document.getElementById('result-box');
 
 let stepsRendered = 0;
 let alertsRendered = 0;
+let _currentScenarioId = null;
+let _collectedAlerts = [];
+let _runStartTime = null;
 
 function setStatus(status) {
   statusEl.textContent = status;
@@ -159,7 +250,7 @@ function traceSection(trace) {
 
   return `
     <details class="step-trace">
-      <summary>🔬 strace ground truth（與右側 Falco 告警對照）</summary>
+      <summary>strace ground truth（與右側 Falco 告警對照）</summary>
       ${body}
     </details>
   `;
@@ -169,30 +260,56 @@ function addStep(step) {
   if (stepsRendered === 0) stepsEl.innerHTML = '';
   stepsRendered++;
 
-  const exitClass = step.exit_code === 0 ? 'step-exit-ok' : 'step-exit-bad';
+  const ok = step.exit_code === 0;
+  const icon = ok
+    ? `<span class="step-icon" style="color:var(--green)">✓</span>`
+    : `<span class="step-icon" style="color:var(--red)">✕</span>`;
+  const stateClass = ok ? 'step-done-ok' : 'step-done-bad';
+
   const div = document.createElement('div');
-  div.className = 'step';
+  div.className = `step ${stateClass}`;
   div.innerHTML = `
     <div class="step-head">
-      <span class="step-name">#${step.index} ${step.name}</span>
-      <span class="${exitClass}">exit ${step.exit_code}</span>
+      <span class="step-num">${step.index}</span>
+      ${icon}
+      <span class="step-name">${escapeHtml(step.name)}</span>
       <span class="step-duration">${step.duration_ms} ms</span>
     </div>
-    <pre>${escapeHtml(step.output || '')}</pre>
+    ${step.output ? `<pre>${escapeHtml(step.output)}</pre>` : ''}
     ${traceSection(step.trace)}
   `;
   stepsEl.appendChild(div);
+
+  const countEl = document.getElementById('steps-count');
+  if (countEl) countEl.textContent = `${stepsRendered} 步驟`;
+  document.getElementById('banner-progress').textContent = `步驟 ${stepsRendered} 執行中`;
 }
 
 function addAlert(alert) {
+  _collectedAlerts.push(alert);
   if (alertsRendered === 0) alertsEl.innerHTML = '';
   alertsRendered++;
 
+  const pri = (alert.priority || '').toLowerCase();
+  const sevClass = pri.includes('crit') || pri.includes('error') ? 'sev-critical'
+    : pri.includes('warn') ? 'sev-warning'
+    : pri.includes('notice') ? 'sev-notice'
+    : 'sev-info';
+  const sevLabel = pri ? pri.toUpperCase() : 'WARNING';
+
+  const elapsed = _runStartTime
+    ? `+${((Date.now() - _runStartTime) / 1000).toFixed(1)}s`
+    : '';
+
   const div = document.createElement('div');
-  div.className = 'alert-item';
+  div.className = `alert-item ${sevClass}`;
   div.innerHTML = `
-    <div class="alert-rule">${escapeHtml(alert.rule || '(unknown rule)')}</div>
-    <div class="alert-output">${escapeHtml(alert.output || '')}</div>
+    <div class="alert-header">
+      <span class="alert-rule">${escapeHtml(alert.rule || '(unknown rule)')}</span>
+      <span class="alert-time">${elapsed}</span>
+    </div>
+    <span class="alert-sev">${sevLabel}</span>
+    <div class="alert-output">${escapeHtml((alert.output || '').slice(0, 200))}</div>
   `;
   alertsEl.prepend(div);
 }
@@ -207,8 +324,17 @@ function setResult(result) {
   resultBox.classList.add('show');
 
   if (result.scenario_id) {
+    _currentScenarioId = result.scenario_id;
     document.getElementById('scenario-title').textContent = result.scenario_id;
   }
+
+  // Update banner
+  document.getElementById('banner-spinner').style.display = 'none';
+  document.getElementById('banner-progress').textContent = '已完成';
+
+  // Build result summary using collected data
+  const runData = Object.assign({}, result, { alerts: _collectedAlerts });
+  showResultSummary(runData, _currentScenarioId || result.scenario_id);
 }
 
 function escapeHtml(str) {
@@ -217,19 +343,107 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+async function initRunBanner(runId) {
+  try {
+    const run = await apiFetch(`/lab/runs/${encodeURIComponent(runId)}`);
+    if (run.scenario_id) {
+      _currentScenarioId = run.scenario_id;
+      const scenarios = await apiFetch('/lab/scenarios').catch(() => []);
+      const scenario = scenarios.find(s => s.id === run.scenario_id);
+      document.getElementById('banner-scenario').textContent =
+        scenario ? `${run.scenario_id}：${scenario.title}` : run.scenario_id;
+    }
+    if (run.falco_tier) {
+      document.getElementById('banner-tier').textContent =
+        `Tier: ${run.falco_tier === 'basic' ? 'Basic (8 規則)' : 'Full (31 規則)'}`;
+    }
+    if (run.type === 'baseline') {
+      document.getElementById('banner-type').textContent = 'Baseline';
+    }
+  } catch (e) { /* silent */ }
+}
+
+function showResultSummary(run, scenarioId) {
+  const summary = document.getElementById('result-summary');
+
+  // FLAG
+  const flagEl = document.querySelector('#rs-flag .ri-value');
+  if (run.flag_found) {
+    flagEl.innerHTML = `<i data-lucide="check-circle" style="color:var(--green);width:16px;height:16px"></i> ${run.flag_found}`;
+  } else {
+    flagEl.innerHTML = `<i data-lucide="x-circle" style="color:var(--red);width:16px;height:16px"></i> 未取得`;
+  }
+
+  // Detection
+  const detEl = document.querySelector('#rs-detection .ri-value');
+  const alertCount = (run.alerts || _collectedAlerts).length;
+  const coverage = run.rule_coverage != null ? Math.round(run.rule_coverage * 100) + '%' : null;
+  detEl.innerHTML = alertCount > 0
+    ? `<i data-lucide="radar" style="color:var(--lab-brand,#4a9eff);width:16px;height:16px"></i> ${alertCount} 筆告警${coverage ? `，覆蓋 ${coverage}` : ''}`
+    : `<i data-lucide="eye-off" style="color:var(--text-muted);width:16px;height:16px"></i> 未偵測到`;
+
+  // Latency
+  const latEl = document.querySelector('#rs-latency .ri-value');
+  if (run.avg_detection_latency_ms != null) {
+    const ms = run.avg_detection_latency_ms;
+    latEl.textContent = ms >= 1000 ? `${(ms/1000).toFixed(1)} s` : `${ms} ms`;
+  } else {
+    latEl.textContent = '—';
+  }
+
+  // Alert count
+  document.querySelector('#rs-alerts .ri-value').textContent = alertCount + ' 筆';
+
+  // Analytics link
+  if (scenarioId) {
+    document.getElementById('rs-analytics').href = `analytics.html#${scenarioId}`;
+  }
+
+  // Rerun button
+  document.getElementById('rs-rerun').addEventListener('click', async () => {
+    if (!scenarioId) return;
+    const btn = document.getElementById('rs-rerun');
+    btn.disabled = true;
+    try {
+      const newRun = await apiFetch('/lab/runs', {
+        method: 'POST',
+        body: JSON.stringify({ scenario_id: scenarioId }),
+      });
+      window.location.href = `run.html?id=${encodeURIComponent(newRun.id)}`;
+    } catch (e) {
+      toast(`執行失敗：${e.message}`, 'error');
+      btn.disabled = false;
+    }
+  });
+
+  summary.style.display = 'block';
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
 if (runId) {
+  initRunBanner(runId);
+
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${protocol}//${location.host}/api/lab/runs/${encodeURIComponent(runId)}/stream`);
 
   ws.addEventListener('message', (ev) => {
     const msg = JSON.parse(ev.data);
     switch (msg.type) {
-      case 'status': setStatus(msg.status); break;
+      case 'status':
+        setStatus(msg.status);
+        if (msg.status === 'running') {
+          _runStartTime = Date.now();
+          document.getElementById('banner-spinner').style.display = 'inline-block';
+          document.getElementById('banner-progress').textContent = '執行中…';
+        }
+        break;
       case 'step': addStep(msg); break;
       case 'result': setResult(msg); break;
       case 'alert': addAlert(msg.alert); break;
       case 'error':
         setStatus('error');
+        document.getElementById('banner-spinner').style.display = 'none';
+        document.getElementById('banner-progress').textContent = '錯誤';
         toast(`連線錯誤：${msg.error}`, 'error');
         break;
     }
@@ -248,5 +462,7 @@ if (runId) {
   setStatus('error');
 }
 </script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>lucide.createIcons();</script>
 </body>
 </html>

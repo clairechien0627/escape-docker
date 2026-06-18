@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>分析 — Edge Container Security Lab</title>
+  <title>分析儀表板 — EdgeSec Lab</title>
   <link rel="stylesheet" href="../css/style.css">
   <style>
     .page { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
-    h1 { font-size: 1.4rem; color: var(--green); margin-bottom: 0.25rem; }
+    h1 { font-size: 1.4rem; color: var(--lab-brand); margin-bottom: 0.25rem; }
     .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 1.5rem; }
 
     .summary-row {
@@ -24,7 +24,7 @@
       text-align: center;
       min-width: 110px;
     }
-    .summary-num { font-size: 1.5rem; font-weight: 700; color: var(--blue); }
+    .summary-num { font-size: 1.5rem; font-weight: 700; color: var(--lab-brand); }
     .summary-label { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.2rem; }
 
     .note-box {
@@ -41,22 +41,23 @@
     .note-box strong { color: var(--orange); }
     .note-box a { color: var(--blue); }
 
-    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-    th { text-align: left; padding: 0.45rem 0.6rem; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
-    td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--bg-hover); vertical-align: middle; }
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; min-width: 860px; border-collapse: collapse; font-size: 0.8rem; }
+    th { text-align: left; padding: 0.4rem 0.5rem; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--bg-hover); vertical-align: middle; }
     tr:hover td { background: var(--bg-hover); }
     .scenario-title { font-weight: 600; color: var(--text-main); }
     .scenario-id { font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono); }
     .num-cell { font-variant-numeric: tabular-nums; }
     .dim-cell { color: var(--text-muted); }
 
-    .rate-cell { display: flex; align-items: center; gap: 0.5rem; min-width: 110px; }
-    .rate-bar { flex: 1; height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
+    .rate-cell { display: flex; align-items: center; gap: 0.3rem; min-width: 70px; max-width: 90px; }
+    .rate-bar { width: 28px; min-width: 28px; height: 5px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; flex-shrink: 0; }
     .rate-fill { height: 100%; border-radius: 3px; }
     .rate-fill.good { background: var(--green); }
     .rate-fill.mid  { background: var(--yellow); }
     .rate-fill.bad  { background: var(--red); }
-    .rate-text { font-size: 0.74rem; color: var(--text-dim); width: 38px; text-align: right; }
+    .rate-text { font-size: 0.74rem; color: var(--text-dim); width: 30px; text-align: right; white-space: nowrap; }
 
     .toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
     .toolbar .hint { font-size: 0.78rem; color: var(--text-dim); margin-right: auto; }
@@ -65,7 +66,7 @@
 
     .tier-tabs { display: flex; gap: 0.4rem; margin-bottom: 1rem; flex-wrap: wrap; }
     .tier-tab { padding: 0.35rem 0.9rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-dim); cursor: pointer; font-size: 0.82rem; transition: background 0.15s; }
-    .tier-tab.active { border-color: var(--green); color: var(--green); background: var(--bg-hover); font-weight: 600; }
+    .tier-tab.active { border-color: var(--lab-accent); color: var(--lab-brand); background: var(--lab-accent-dim); font-weight: 600; }
     .tier-tab:hover:not(.active) { background: var(--bg-hover); color: var(--text-main); }
 
     .compare-summary { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
@@ -78,6 +79,43 @@
     .delta-neg { color: var(--red); }
     .delta-zero { color: var(--text-muted); }
     .compare-table-wrap { overflow-x: auto; }
+
+    /* ── Info icon（JS 定位，fixed，逃脫 overflow 裁切） ── */
+    .info-tip {
+      display: inline-flex;
+      align-items: center;
+      cursor: help;
+      margin-left: 3px;
+      vertical-align: middle;
+    }
+    /* 同時選 <i>（未替換前）和 <svg>（替換後） */
+    .info-tip i, .info-tip svg {
+      width: 12px !important;
+      height: 12px !important;
+      opacity: 0.7;
+      color: var(--lab-brand);
+      flex-shrink: 0;
+    }
+    .info-tip-box {
+      display: none;
+      position: fixed;
+      background: var(--bg-card);
+      border: 1px solid var(--lab-border);
+      border-radius: 6px;
+      padding: 0.45rem 0.65rem;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      white-space: normal;
+      width: 240px;
+      z-index: 9999;
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.55;
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+      pointer-events: none;
+    }
 
     /* 告警成本區塊 */
     .cost-section { margin-top: 0; }
@@ -95,38 +133,59 @@
     .cost-assumption label { color: var(--text-dim); }
   </style>
 </head>
-<body>
+<body class="lab-page">
 
-<nav class="navbar">
-  <a class="navbar-brand" href="../index.html">🐳 Escape Docker</a>
+<nav class="navbar lab-navbar">
+  <a class="navbar-brand" href="../index.html">
+    <i data-lucide="flask-conical"></i> EdgeSec Lab
+  </a>
   <div class="navbar-links">
-    <a href="../map.html">🗺️ Map</a>
-    <a href="../scoreboard.html">📊 Score</a>
-    <a href="../achievements.html">🏆 成就</a>
-    <a href="index.html">🧪 Lab</a>
-    <a href="analytics.html" class="active">📈 分析</a>
+    <a href="index.html">
+      <i data-lucide="layout-grid"></i> 實驗控制台
+    </a>
+    <a href="analytics.html" class="active">
+      <i data-lucide="bar-chart-2"></i> 分析儀表板
+    </a>
+    <a href="../index.html" style="color:var(--text-muted);font-size:0.78rem">
+      <i data-lucide="external-link"></i> Story Mode
+    </a>
   </div>
 </nav>
 
 <div class="page">
-  <h1>📈 偵測率 / 誤報率分析</h1>
+  <h1><i data-lucide="bar-chart-2"></i> 偵測率 / 誤報率分析</h1>
   <p class="subtitle">彙整 15 個場景的歷史執行結果：成功率、FLAG 取得率、平均耗時、Falco 偵測率、規則覆蓋率與偵測延遲（RQ2）。</p>
 
   <div class="tier-tabs" id="tier-tabs">
     <button class="tier-tab active" data-tier="all">全部</button>
-    <button class="tier-tab" data-tier="full">🟢 Full Tier（31 規則）</button>
-    <button class="tier-tab" data-tier="basic">🔵 Basic Tier（8 規則）</button>
-    <button class="tier-tab" data-tier="compare">⚖ Tier 對比</button>
+    <button class="tier-tab" data-tier="full">Full Tier（31 規則）</button>
+    <button class="tier-tab" data-tier="basic">Basic Tier（8 規則）</button>
+    <button class="tier-tab" data-tier="compare">Tier 對比</button>
   </div>
 
   <!-- ══ 對比模式 ══ -->
   <div id="compare-view" style="display:none">
+    <!-- 研究結論橫條 -->
+    <div id="compare-insight" style="
+      background: var(--bg-card);
+      border: 1px solid var(--lab-border);
+      border-left: 3px solid var(--lab-accent);
+      border-radius: 8px;
+      padding: 0.85rem 1.1rem;
+      margin-bottom: 1rem;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      display: none;
+    "></div>
+
     <div class="compare-summary" id="compare-summary">
       <div class="compare-card"><div class="c-label">載入中…</div></div>
     </div>
 
     <div class="toolbar" style="margin-bottom:0.5rem">
-      <button class="btn" id="download-compare-csv-btn">⬇ 下載比對 CSV</button>
+      <button class="btn" id="download-compare-csv-btn"><i data-lucide="download"></i> 下載比對 CSV</button>
     </div>
 
     <div class="compare-table-wrap card">
@@ -134,38 +193,43 @@
         <thead>
           <tr>
             <th>場景</th>
-            <th>🔵 Basic 覆蓋率</th>
-            <th>🟢 Full 覆蓋率</th>
-            <th>Δ 覆蓋率</th>
-            <th>🔵 Basic 誤報率</th>
-            <th>🟢 Full 誤報率</th>
-            <th>Δ 誤報率</th>
-            <th>🔵 Basic 告警率</th>
-            <th>🟢 Full 告警率</th>
-            <th>雜訊倍數</th>
+            <th title="Full 覆蓋率 − Basic 覆蓋率（正值代表 Full 偵測更廣）">Δ 覆蓋率</th>
+            <th title="Full 誤報率 − Basic 誤報率（正值代表 Full 誤報更多）">Δ 誤報率</th>
+            <th title="Full 告警率 ÷ Basic 告警率（越大代表 Full 產生越多雜訊）">雜訊倍數</th>
           </tr>
         </thead>
-        <tbody><tr><td colspan="10" class="dim-cell">載入中…</td></tr></tbody>
+        <tbody><tr><td colspan="4" class="dim-cell">載入中…</td></tr></tbody>
       </table>
     </div>
 
-    <div class="section-title" style="margin-top:1.5rem">📊 規則覆蓋率與誤報率：Tier 對比圖</div>
+    <div class="section-title" style="margin-top:1.5rem">規則覆蓋率比較：Basic vs Full</div>
     <p class="subtitle" style="margin-bottom:0.75rem">
-      每場景並排顯示 Basic（藍）與 Full（綠）的規則覆蓋率，以及兩個 Tier 的誤報率（Basic 淺藍、Full 橘）。
-      理想情境：覆蓋率長條長，誤報率長條短。
+      每個場景並排比較兩組規則集的偵測覆蓋率。數值越高代表攻擊腳本執行時 Falco 命中對應規則的比例越高。
+      <span style="color:var(--lab-brand)">●</span> Basic（8 規則） &nbsp;
+      <span style="color:var(--cyan)">●</span> Full（31 規則）
     </p>
-    <div class="card" style="margin-bottom:1.5rem">
-      <div style="position:relative;height:650px">
+    <div class="card" style="margin-bottom:1.25rem">
+      <div id="compare-cov-wrap" style="position:relative">
         <canvas id="compare-coverage-chart"></canvas>
       </div>
     </div>
 
-    <div class="section-title">📡 Baseline 告警率：Tier 對比圖</div>
+    <div class="section-title">誤報率比較：Basic vs Full</div>
     <p class="subtitle" style="margin-bottom:0.75rem">
-      靜置 20 秒期間每分鐘產生的告警數量；數值越低代表在邊緣設備上的雜訊越小、處理成本越低。
+      每個場景並排比較兩組規則集的誤報率，數值越低越好。在沒有攻擊的情況下，Basic Tier 的規則誤觸頻率明顯低於 Full Tier。
     </p>
     <div class="card" style="margin-bottom:1.5rem">
-      <div style="position:relative;height:300px">
+      <div id="compare-fp-wrap" style="position:relative">
+        <canvas id="compare-fp-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="section-title">Baseline 告警率：Tier 對比（由高到低）</div>
+    <p class="subtitle" style="margin-bottom:0.75rem">
+      在無攻擊的靜置期間，每分鐘產生的告警數量。數值越低代表在邊緣設備上的雜訊越小、處理成本越低。依 Full Tier 告警率由高到低排序。
+    </p>
+    <div class="card" style="margin-bottom:1.5rem">
+      <div id="compare-alert-wrap" style="position:relative">
         <canvas id="compare-alert-chart"></canvas>
       </div>
     </div>
@@ -176,10 +240,9 @@
   <!-- ══ 單一 Tier 視圖 ══ -->
   <div id="single-tier-view">
   <div class="toolbar">
-    <span class="hint">執行單一場景或批次執行 / Baseline，請至「🧪 Lab」頁面</span>
-    <a class="btn" href="index.html">🧪 前往 Lab 執行頁</a>
-    <button class="btn" id="download-csv-btn">⬇ 下載 CSV</button>
-    <button class="btn btn-danger" id="clear-history-btn">🗑️ 清除歷史記錄</button>
+    <span class="hint">執行場景請點上方表格的 ▶ 按鈕，或前往 <a href="index.html">Lab 執行頁</a></span>
+    <button class="btn" id="download-csv-btn"><i data-lucide="download"></i> 下載 CSV</button>
+    <button class="btn btn-danger" id="clear-history-btn"><i data-lucide="trash-2"></i> 清除歷史</button>
   </div>
 
   <div class="summary-row" id="summary-row" style="display:none">
@@ -213,43 +276,7 @@
     </div>
   </div>
 
-  <div class="note-box">
-    <strong>關於「Falco 偵測率」與「規則覆蓋率」的解讀：</strong>
-    <strong>偵測率</strong>代表「該次執行期間，lab-api 是否收到至少一筆來自
-    Falco 的告警」（透過 <code>/api/lab/falco-webhook</code> 即時轉發）。
-    <strong>規則覆蓋率</strong>則是更細緻的指標：該場景
-    <code>falco_rule_refs</code> 中，有對應且已啟用的 Falco 規則
-    （見 <code>falco/README.md</code> 第 2 節對照表），曾在任一次執行中被
-    實際命中的比例；滑鼠移到長條上可看到已觸發的規則名稱。<code>—</code>
-    代表該場景沒有對應的可量測規則，或尚未執行過。
-    <strong>偵測延遲</strong>是該場景所有「曾命中可量測規則」的執行中，
-    從 <code>POST /api/lab/runs</code> 發起時間到第一筆對應 Falco 告警送達
-    lab-api 的時間差平均值——兩端時間都採用 lab-api 自己的時鐘，避免
-    Falco container 與 lab-api 之間的時鐘飄移影響量測。
-    <strong>誤報率</strong>來自 <code>POST /api/lab/baseline-runs</code>
-    （靜置 20 秒、不執行 exploit）：場景 <code>falco_rule_refs</code>
-    對應規則中，在「沒有任何攻擊行為」期間仍被觸發的比例，越低越好；
-    <code>—</code> 代表此場景尚未執行過 Baseline。下方「RQ2 對照」圖將
-    規則覆蓋率（橫軸）與誤報率（縱軸）畫成散佈圖，方便一次比較 15 個場景
-    在「有效偵測」與「不誤報」兩個目標上的取捨。<br><br>
-    若要執行單一場景的 Baseline，或一次對全部 15 個場景批次執行
-    Exploit／Baseline，請至「🧪 Lab」頁面（場景卡片下方會顯示包含誤報率的
-    「上次結果」摘要）。<br><br>
-    2026-06-14：把 <code>escape-falco</code> 接進常駐 stack 後，先前記錄
-    「container context 解析不到、規則不會觸發」的案例（room6 的
-    <code>Docker Socket Accessed From Container</code>、
-    <code>Unexpected Child Process In Container Via Docker Exec</code>，
-    secret-b 的 <code>Docker Save Or History Executed</code> 等）已能正確
-    觸發，詳見
-    <code>troubleshooting/falco-container-context-not-resolved.md</code>
-    第 8 節與 <code>falco/README.md</code> 第 4.6 節。殘留限制：因
-    <code>container.name</code>/<code>container.id</code> 在告警輸出中仍為
-    <code>null</code>，<code>run.alerts</code> 以時間窗口（而非
-    container）關聯，規則覆蓋率的「已觸發規則」可能包含同一時段其他房間
-    /host 程序產生的雜訊規則。
-  </div>
-
-  <div class="card">
+  <div class="card table-scroll">
     <table id="matrix-table">
       <thead>
         <tr>
@@ -259,48 +286,82 @@
           <th>成功率</th>
           <th>FLAG 取得率</th>
           <th>平均耗時</th>
-          <th>Falco 偵測率</th>
-          <th>規則覆蓋率</th>
-          <th>偵測延遲</th>
-          <th>誤報率</th>
+          <th>Falco 偵測率<span class="info-tip"><i data-lucide="info"></i><span class="info-tip-box">執行期間是否收到至少一筆 Falco 告警。為粗略指標，不代表對應規則精確命中。</span></span></th>
+          <th>規則覆蓋率<span class="info-tip"><i data-lucide="info"></i><span class="info-tip-box">攻擊期間，該場景 falco_rule_refs 中實際被觸發的規則比例。越高代表偵測越精準。</span></span></th>
+          <th>偵測延遲<span class="info-tip"><i data-lucide="info"></i><span class="info-tip-box">從 exploit 執行開始，到第一筆對應 Falco 告警送達 lab-api 的時間差平均值（毫秒）。取所有 exploit runs 的平均。</span></span></th>
+          <th>誤報率<span class="info-tip"><i data-lucide="info"></i><span class="info-tip-box">Baseline 靜置期間（無攻擊），同批規則仍被誤觸發的比例。越低越好，來自 Baseline runs 的資料。</span></span></th>
           <th>最後執行</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
-        <tr><td colspan="11" class="text-dim">載入中…</td></tr>
+        <tr><td colspan="12" class="text-dim">載入中…</td></tr>
       </tbody>
     </table>
   </div>
 
-  <div class="section-title">📊 RQ2 對照：規則覆蓋率 vs 誤報率</div>
+  <div class="section-title">規則覆蓋率 vs 誤報率（RQ2）</div>
   <p class="subtitle" style="margin-bottom: 0.75rem;">
-    每個場景一列，並排顯示兩個百分比：<strong>規則覆蓋率</strong>
-    （exploit 執行期間命中對應 Falco 規則的比例，越高越好）與
-    <strong>誤報率</strong>（Baseline 靜置期間同一批規則誤觸發的比例，
-    越低越好）。理想場景是綠色長條長、橘色長條短。沒有對應資料的場景
-    （尚未執行 / 尚未跑過 Baseline）該長條留空。
+    每個場景並排顯示兩個指標：<strong>規則覆蓋率</strong>（藍，越高越好）與
+    <strong>誤報率</strong>（紅，越低越好）。理想場景是藍條長、紅條短。
   </p>
   <div class="card">
-    <div style="position: relative; height: 480px;">
+    <div id="rq2-chart-wrap" style="position:relative">
       <canvas id="rq2-chart"></canvas>
     </div>
-    <div class="dim-cell" id="rq2-chart-empty" style="margin-top: 0.5rem; font-size: 0.8rem; display: none;">
-      尚無資料：請至「🧪 Lab」頁面執行場景或 Baseline 後再回來查看。
+    <div class="dim-cell" id="rq2-chart-empty" style="margin-top:0.5rem;font-size:0.8rem;display:none;padding:1rem 0">
+      尚無資料：請至「實驗控制台」執行場景並跑 Baseline 後再回來查看。
+    </div>
+  </div>
+
+  <div class="section-title" style="margin-top:2rem">偵測延遲分布（RQ2）</div>
+  <p class="subtitle" style="margin-bottom:0.75rem">
+    各場景從執行開始到 Falco 第一筆對應告警送達的平均時間，按快到慢排序。
+    <span style="color:var(--green)">●</span> 綠 &lt; 500ms
+    <span style="color:var(--yellow)">●</span> 黃 500ms–2s
+    <span style="color:var(--red)">●</span> 紅 &gt; 2s
+  </p>
+  <div class="card">
+    <div id="latency-chart-wrap" style="position:relative">
+      <canvas id="latency-chart"></canvas>
+    </div>
+    <div class="dim-cell" id="latency-chart-empty" style="margin-top:0.5rem;font-size:0.8rem;display:none;padding:1rem 0">
+      尚無偵測延遲資料（需執行 exploit 且 Falco 至少命中一條對應規則）。
+    </div>
+  </div>
+
+  <div class="section-title" style="margin-top:2rem">覆蓋率 × 誤報率 散佈圖（RQ2）</div>
+  <p class="subtitle" style="margin-bottom:0.75rem">
+    每個點代表一個場景。<strong>右下角</strong>（高覆蓋率 + 低誤報率）為理想區域；
+    <strong>左上角</strong>（低覆蓋率 + 高誤報率）為最差區域。顏色 + 形狀代表風險等級（T1–T4），hover 顯示場景名稱。
+  </p>
+  <div class="card">
+    <div style="position:relative;height:380px">
+      <canvas id="scatter-chart"></canvas>
+    </div>
+    <div class="dim-cell" id="scatter-chart-empty" style="margin-top:0.5rem;font-size:0.8rem;display:none;padding:1rem 0">
+      尚無資料（需同時有規則覆蓋率與誤報率資料）。
+    </div>
+    <!-- 場景參照格（標籤重疊時的保底對照） -->
+    <div id="scatter-ref" style="display:none;margin-top:0.85rem;border-top:1px solid var(--border);padding-top:0.65rem">
+      <p style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.45rem">場景座標對照（hover 顯示完整名稱）</p>
     </div>
   </div>
 
   </div><!-- end single-tier-view -->
 
-  <div class="section-title">⚙️ Falco 資源開銷（RQ3 代理量測）</div>
+  <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+    <span style="display:inline-flex;align-items:center;gap:0.4rem">
+      <i data-lucide="cpu" style="width:15px;height:15px"></i> Falco 資源開銷
+    </span>
+    <button class="btn btn-sm" id="refresh-resource-btn" style="font-weight:400">
+      <i data-lucide="refresh-cw"></i> 重新整理
+    </button>
+  </div>
   <p class="subtitle" style="margin-bottom: 0.75rem;">
-    沒有 Raspberry Pi 時，以 x86 環境的 <code>docker stats</code> 快照量化
-    「啟用 Falco 規則式偵測」相對於 <code>lab-api</code>/<code>room-manager</code>
-    這類常駐服務的額外資源開銷，作為邊緣裝置部署成本的代理指標。
+    以 x86 環境的 <code>docker stats</code> 快照量化 Falco 相對於其他常駐服務的額外資源開銷，作為邊緣裝置部署成本的代理指標。
   </p>
   <div class="card">
-    <div class="toolbar" style="margin-bottom: 0.5rem;">
-      <button class="btn" id="refresh-resource-btn">🔄 重新整理</button>
-    </div>
     <table id="resource-table">
       <thead>
         <tr>
@@ -323,6 +384,7 @@
 <div id="toast-container"></div>
 <script src="../js/api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script>
 // ── 狀態 ──────────────────────────────────────────
 let _currentMatrix = null;
@@ -330,8 +392,11 @@ let _currentTier = 'all';
 let _compareBM = null;
 let _compareFM = null;
 let compareCoverageChart = null;
+let compareFPChart = null;
 let compareAlertChart = null;
 let rq2Chart = null;
+let latencyChart = null;
+let scatterChart = null;
 
 // ── 共用 cell 渲染 ────────────────────────────────
 function rateCell(rate) {
@@ -386,7 +451,17 @@ function falsePositiveCell(m) {
 
 function formatTime(iso) {
   if (!iso) return '<span class="dim-cell">—</span>';
-  return new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  const hrs  = Math.floor(mins / 60);
+  const days = Math.floor(hrs  / 24);
+  let text;
+  if (mins < 1)       text = '剛才';
+  else if (mins < 60) text = `${mins} 分前`;
+  else if (hrs < 24)  text = `${hrs} 小時前`;
+  else                text = `${days} 天前`;
+  const full = new Date(iso).toLocaleString('zh-TW');
+  return `<span title="${full}" style="cursor:default;color:var(--text-dim);font-size:0.74rem">${text}</span>`;
 }
 
 function avg(arr, key) {
@@ -394,41 +469,62 @@ function avg(arr, key) {
   return vals.length ? vals.reduce((s, m) => s + m[key], 0) / vals.length : null;
 }
 
-// ── RQ2 圖表（單一 Tier 視圖）────────────────────
+// ── 共用工具 ──────────────────────────────────────
+// 根據數值決定顏色（用於摘要卡片）
+function colorForPct(pct, invert = false) {
+  if (pct == null) return 'var(--lab-brand)';
+  if (invert) return pct <= 20 ? 'var(--green)' : pct <= 55 ? 'var(--yellow)' : 'var(--red)';
+  return pct >= 70 ? 'var(--green)' : pct >= 35 ? 'var(--yellow)' : 'var(--red)';
+}
+
+function chartColors() {
+  const s = getComputedStyle(document.body);
+  return {
+    textDim: s.getPropertyValue('--text-dim').trim(),
+    border:  s.getPropertyValue('--border').trim(),
+  };
+}
+
+function shortTitle(title, max = 18) {
+  return title.length > max ? title.slice(0, max) + '…' : title;
+}
+
+function riskTier(id) {
+  if (['room6','room7','final','secret-b'].includes(id)) return 'T4';
+  if (['room4','room9'].includes(id)) return 'T3';
+  if (['room2','room11'].includes(id)) return 'T2';
+  return 'T1';
+}
+
+// ── RQ2 Bar：覆蓋率 vs 誤報率 ────────────────────
 function renderRQ2Chart(matrix) {
   const canvas = document.getElementById('rq2-chart');
-  const empty = document.getElementById('rq2-chart-empty');
+  const empty  = document.getElementById('rq2-chart-empty');
+  const wrap   = document.getElementById('rq2-chart-wrap');
 
-  const hasAnyData = matrix.some((m) => m.rule_coverage != null || m.false_positive_rate != null);
-  if (!hasAnyData) {
-    canvas.style.display = 'none';
-    empty.style.display = 'block';
-    return;
-  }
-  canvas.style.display = 'block';
-  empty.style.display = 'none';
+  const hasData = matrix.some((m) => m.rule_coverage != null || m.false_positive_rate != null);
+  if (!hasData) { canvas.style.display = 'none'; empty.style.display = 'block'; return; }
+  canvas.style.display = 'block'; empty.style.display = 'none';
 
-  const labels = matrix.map((m) => m.scenario_id);
-  const coverage = matrix.map((m) => (m.rule_coverage != null ? Math.round(m.rule_coverage * 100) : null));
-  const falsePositive = matrix.map((m) => (m.false_positive_rate != null ? Math.round(m.false_positive_rate * 100) : null));
+  const { textDim, border } = chartColors();
+  // Y 軸用短 ID（room0 等），tooltip 顯示完整標題
+  const labels      = matrix.map((m) => m.scenario_id);
+  const titleMap    = Object.fromEntries(matrix.map((m) => [m.scenario_id, m.title]));
+  const coverage    = matrix.map((m) => m.rule_coverage    != null ? Math.round(m.rule_coverage    * 100) : null);
+  const falsePos    = matrix.map((m) => m.false_positive_rate != null ? Math.round(m.false_positive_rate * 100) : null);
 
-  const style = getComputedStyle(document.body);
-  const textDim = style.getPropertyValue('--text-dim').trim();
-  const border = style.getPropertyValue('--border').trim();
-  const green = style.getPropertyValue('--green').trim();
-  const orange = style.getPropertyValue('--orange').trim();
+  wrap.style.height = Math.max(320, matrix.length * 28 + 50) + 'px';
 
   Chart.defaults.color = textDim;
   Chart.defaults.borderColor = border;
-
   if (rq2Chart) rq2Chart.destroy();
   rq2Chart = new Chart(canvas, {
     type: 'bar',
     data: {
       labels,
       datasets: [
-        { label: '規則覆蓋率 (%)', data: coverage, backgroundColor: green },
-        { label: '誤報率 (%)', data: falsePositive, backgroundColor: orange },
+        { label: '規則覆蓋率', data: coverage,  backgroundColor: 'rgba(96,165,250,0.75)', borderColor: '#60a5fa', borderWidth: 1, borderRadius: 3 },
+        { label: '誤報率',     data: falsePos,   backgroundColor: 'rgba(248,81,73,0.65)',  borderColor: '#f85149', borderWidth: 1, borderRadius: 3 },
       ],
     },
     options: {
@@ -436,13 +532,386 @@ function renderRQ2Chart(matrix) {
       maintainAspectRatio: false,
       scales: {
         x: { min: 0, max: 100, ticks: { callback: (v) => `${v}%` }, grid: { color: border } },
-        y: { grid: { display: false } },
+        y: { grid: { display: false }, ticks: { font: { family: 'JetBrains Mono, monospace', size: 11 } } },
       },
       plugins: {
-        legend: { position: 'top', labels: { color: textDim } },
+        legend: { position: 'top', labels: { color: textDim, padding: 16, usePointStyle: true } },
         tooltip: {
           callbacks: {
-            label: (ctx) => (ctx.raw == null ? `${ctx.dataset.label}：尚無資料` : `${ctx.dataset.label}：${ctx.raw}%`),
+            title: (items) => titleMap[items[0].label] || items[0].label,
+            label: (ctx) => ctx.raw == null ? `${ctx.dataset.label}：尚無資料` : `${ctx.dataset.label}：${ctx.raw}%`,
+          },
+        },
+      },
+    },
+  });
+}
+
+// ── 偵測延遲排序圖 ────────────────────────────────
+function renderLatencyChart(matrix) {
+  const canvas = document.getElementById('latency-chart');
+  const empty  = document.getElementById('latency-chart-empty');
+  const wrap   = document.getElementById('latency-chart-wrap');
+
+  const data = matrix
+    .filter((m) => m.avg_detection_latency_ms != null)
+    .sort((a, b) => a.avg_detection_latency_ms - b.avg_detection_latency_ms);
+
+  if (data.length === 0) { canvas.style.display = 'none'; empty.style.display = 'block'; return; }
+  canvas.style.display = 'block'; empty.style.display = 'none';
+
+  const { textDim, border } = chartColors();
+  const labels   = data.map((m) => m.scenario_id);
+  const titleMap = Object.fromEntries(data.map((m) => [m.scenario_id, m.title]));
+  const values   = data.map((m) => m.avg_detection_latency_ms);
+  const colors = values.map((v) =>
+    v < 500  ? 'rgba(57,255,20,0.75)'  :
+    v < 2000 ? 'rgba(240,196,14,0.8)'  :
+               'rgba(248,81,73,0.75)'
+  );
+
+  wrap.style.height = Math.max(200, data.length * 30 + 50) + 'px';
+
+  if (latencyChart) latencyChart.destroy();
+  latencyChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '平均偵測延遲',
+        data: values,
+        backgroundColor: colors,
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          min: 0,
+          ticks: { callback: (v) => v >= 1000 ? `${(v / 1000).toFixed(1)}s` : `${v}ms` },
+          grid: { color: border },
+        },
+        y: { grid: { display: false }, ticks: { font: { family: 'JetBrains Mono, monospace', size: 11 } } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => titleMap[items[0].label] || items[0].label,
+            label: (ctx) => {
+              const ms = ctx.raw;
+              const fmt   = ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`;
+              const speed = ms < 500 ? '（快速）' : ms < 2000 ? '（中等）' : '（慢）';
+              return `偵測延遲：${fmt} ${speed}`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+// ── 覆蓋率 × 誤報率 散佈圖 ───────────────────────
+function renderScatterChart(matrix) {
+  const canvas = document.getElementById('scatter-chart');
+  const empty  = document.getElementById('scatter-chart-empty');
+
+  const eligible = matrix.filter((m) => m.rule_coverage != null && m.false_positive_rate != null);
+  if (eligible.length === 0) { canvas.style.display = 'none'; empty.style.display = 'block'; return; }
+  canvas.style.display = 'block'; empty.style.display = 'none';
+
+  // 同座標所有場景名稱（給 tooltip 顯示）
+  const coordScenarios = {};
+  eligible.forEach(m => {
+    const k = `${Math.round(m.rule_coverage * 100)},${Math.round(m.false_positive_rate * 100)}`;
+    if (!coordScenarios[k]) coordScenarios[k] = [];
+    coordScenarios[k].push(m.title);
+  });
+
+  // 不同 tier 用不同形狀 + 顏色，雙重辨識
+  const tierCfg = {
+    T1: { label: 'T1 — 資訊洩漏',        bg: 'rgba(96,165,250,0.75)',  border: '#60a5fa', style: 'circle' },
+    T2: { label: 'T2 — 容器內提權',       bg: 'rgba(240,196,14,0.8)',  border: '#f0c40e', style: 'rect' },
+    T3: { label: 'T3 — 跨容器橫向移動',   bg: 'rgba(227,179,65,0.8)',  border: '#e3b341', style: 'triangle' },
+    T4: { label: 'T4 — Docker.sock 控制', bg: 'rgba(248,81,73,0.85)',  border: '#f85149', style: 'rectRot' },
+  };
+
+  // 先統計各座標的點數（用於 jitter + 多點 tooltip）
+  const JITTER = 2; // 2% — 足以分離點但不至於散太開
+  const coordMap = {};
+  eligible.forEach(m => {
+    const k = `${Math.round(m.rule_coverage * 100)},${Math.round(m.false_positive_rate * 100)}`;
+    if (!coordMap[k]) coordMap[k] = [];
+    coordMap[k].push(m.scenario_id);
+  });
+
+  const groups = { T1: [], T2: [], T3: [], T4: [] };
+  eligible.forEach((m) => {
+    const origX = Math.round(m.rule_coverage * 100);
+    const origY = Math.round(m.false_positive_rate * 100);
+    const key = `${origX},${origY}`;
+    const siblings = coordMap[key];
+    const idx = siblings.indexOf(m.scenario_id);
+    const total = siblings.length;
+
+    let jx = origX, jy = origY;
+    if (total > 1) {
+      const angle = (2 * Math.PI * idx) / total - Math.PI / 2;
+      jx = origX + JITTER * Math.cos(angle);
+      jy = origY + JITTER * Math.sin(angle);
+    }
+
+    groups[riskTier(m.scenario_id)].push({
+      x: jx, y: jy,
+      origX, origY,       // 原始座標用於 tooltip
+      title: m.title, id: m.scenario_id,
+    });
+  });
+
+  const datasets = Object.entries(tierCfg)
+    .filter(([k]) => groups[k].length > 0)
+    .map(([k, cfg]) => ({
+      label: cfg.label,
+      data: groups[k].map((p) => ({ x: p.x, y: p.y, origX: p.origX, origY: p.origY, title: p.title, id: p.id })),
+      backgroundColor: cfg.bg,
+      borderColor: cfg.border,
+      borderWidth: 2,
+      pointStyle: cfg.style,
+      pointRadius: 8,
+      pointHoverRadius: 10,
+    }));
+
+  // Smart label plugin：8 方向候選，貪婪選最少重疊位置，必要時畫連接線
+  const labelPlugin = {
+    id: 'scatterLabels',
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx;
+      ctx.font = '9px JetBrains Mono, monospace';
+      const LH = 10, LG = 3; // label height, gap
+
+      // 1. 蒐集所有點的位置與顏色
+      const allPoints = [];
+      chart.data.datasets.forEach((dataset, di) => {
+        const meta = chart.getDatasetMeta(di);
+        if (meta.hidden) return;
+        meta.data.forEach((element, idx) => {
+          const pt = dataset.data[idx];
+          if (!pt) return;
+          const { x, y } = element.getProps(['x', 'y'], true);
+          allPoints.push({ x, y, id: pt.id, color: dataset.borderColor });
+        });
+      });
+
+      // 2. Greedy placement：依序為每個點挑最少重疊的候選位置
+      const placed = [];
+      allPoints.forEach(({ x, y, id, color }) => {
+        const tw = ctx.measureText(id).width;
+
+        // 8 個候選方向（dx, dy 相對於點的像素位置）
+        const candidates = [
+          { dx: 9,        dy: -4  }, // 右
+          { dx: 9,        dy: 9   }, // 右下
+          { dx: -tw - 6,  dy: -4  }, // 左
+          { dx: -tw - 6,  dy: 9   }, // 左下
+          { dx: 9,        dy: -16 }, // 右上
+          { dx: -tw - 6,  dy: -16 }, // 左上
+          { dx: -tw / 2,  dy: -20 }, // 正上
+          { dx: -tw / 2,  dy: 16  }, // 正下
+        ];
+
+        let best = candidates[0];
+        let bestOverlaps = Infinity;
+
+        for (const c of candidates) {
+          const lx = x + c.dx, ly = y + c.dy;
+          let overlaps = 0;
+          for (const p of placed) {
+            if (lx < p.x + p.w + LG && lx + tw + LG > p.x &&
+                ly - LH < p.y + LG  && ly + LG  > p.y - LH) overlaps++;
+          }
+          if (overlaps < bestOverlaps) {
+            bestOverlaps = overlaps;
+            best = c;
+            if (overlaps === 0) break;
+          }
+        }
+
+        const lx = x + best.dx, ly = y + best.dy;
+        placed.push({ x: lx, y: ly, w: tw });
+
+        ctx.save();
+        ctx.font = '9px JetBrains Mono, monospace';
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.9;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+
+        // 若標籤移動超過預設位置，畫條淡連接線
+        if (Math.abs(best.dx) > 12 || Math.abs(best.dy) > 12) {
+          ctx.beginPath();
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = 0.22;
+          ctx.lineWidth = 0.8;
+          ctx.moveTo(x, y);
+          ctx.lineTo(lx + (best.dx >= 0 ? 0 : tw), ly - LH / 2);
+          ctx.stroke();
+          ctx.globalAlpha = 0.9;
+        }
+
+        ctx.fillText(id, lx, ly);
+        ctx.restore();
+      });
+    },
+  };
+
+  const { textDim, border } = chartColors();
+  Chart.defaults.color = textDim;
+  Chart.defaults.borderColor = border;
+
+  // 象限背景 plugin
+  const quadrantPlugin = {
+    id: 'quadrantBg',
+    beforeDraw(chart) {
+      const { ctx, chartArea: { left, right, top, bottom }, scales: { x, y } } = chart;
+      const midX = x.getPixelForValue(50);
+      const midY = y.getPixelForValue(50);
+      ctx.save();
+      // 右下（高覆蓋 + 低誤報）= 理想
+      ctx.fillStyle = 'rgba(57,255,20,0.04)';
+      ctx.fillRect(midX, midY, right - midX, bottom - midY);
+      // 左上（低覆蓋 + 高誤報）= 最差
+      ctx.fillStyle = 'rgba(248,81,73,0.05)';
+      ctx.fillRect(left, top, midX - left, midY - top);
+      // 象限分隔線
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(midX, top); ctx.lineTo(midX, bottom); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(left, midY); ctx.lineTo(right, midY); ctx.stroke();
+      ctx.setLineDash([]);
+      // 象限標籤放在各象限正中心（遠離資料點集中的軸附近）
+      function qLabel(lines, cx, cy, textColor) {
+        ctx.save();
+        ctx.font = '10px system-ui';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const lineH = 14;
+        const maxW = Math.max(...lines.map(l => ctx.measureText(l).width));
+        const boxH = lines.length * lineH;
+        const px = 8, py = 5;
+        ctx.fillStyle = 'rgba(13,17,23,0.6)';
+        ctx.beginPath();
+        ctx.roundRect(cx - maxW/2 - px, cy - boxH/2 - py, maxW + px*2, boxH + py*2, 4);
+        ctx.fill();
+        ctx.fillStyle = textColor;
+        lines.forEach((line, i) => {
+          const ty = cy - boxH/2 + lineH * i + lineH/2;
+          ctx.fillText(line, cx, ty);
+        });
+        ctx.restore();
+      }
+      // 左上象限中心（低覆蓋高誤報）
+      const tlCx = (left + midX) / 2;
+      const tlCy = (top + midY) / 2;
+      qLabel(['低覆蓋', '高誤報'], tlCx, tlCy, 'rgba(248,81,73,0.7)');
+      // 右下象限中心（高覆蓋低誤報 = 理想）
+      const brCx = (midX + right) / 2;
+      const brCy = (midY + bottom) / 2;
+      qLabel(['理想區域', '高覆蓋 · 低誤報'], brCx, brCy, 'rgba(57,255,20,0.6)');
+      ctx.restore();
+    },
+  };
+
+  // 參照格：按 tier 分組，每個場景顯示 ID + (coverage%, FP%)
+  const refEl = document.getElementById('scatter-ref');
+  if (refEl) {
+    const tierColors = { T1:'#60a5fa', T2:'#f0c40e', T3:'#e3b341', T4:'#f85149' };
+    const byTier = { T1:[], T2:[], T3:[], T4:[] };
+    eligible.forEach(m => byTier[riskTier(m.scenario_id)].push(m));
+
+    const rows = ['T1','T2','T3','T4']
+      .filter(t => byTier[t].length > 0)
+      .map(t => {
+        const chips = byTier[t].map(m => {
+          const cov = Math.round(m.rule_coverage * 100);
+          const fp  = Math.round(m.false_positive_rate * 100);
+          return `<span title="${m.title}&#10;覆蓋率 ${cov}% · 誤報率 ${fp}%" style="
+            display:inline-flex;align-items:center;gap:0.25rem;
+            font-size:0.7rem;font-family:var(--font-mono);
+            color:${tierColors[t]};background:var(--bg-hover);
+            border:1px solid rgba(128,128,128,0.25);border-radius:4px;
+            padding:0.08rem 0.4rem;white-space:nowrap;cursor:default">
+            ${m.scenario_id}
+            <span style="color:var(--text-muted);font-size:0.62rem">${cov}%,${fp}%</span>
+          </span>`;
+        }).join('');
+        return `<div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;margin-bottom:0.3rem">
+          <span style="font-size:0.68rem;font-weight:700;color:${tierColors[t]};min-width:2rem">${t}</span>
+          ${chips}
+        </div>`;
+      }).join('');
+
+    refEl.innerHTML = `<p style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.45rem">場景座標對照（hover 顯示完整名稱）</p>${rows}`;
+    refEl.style.display = 'block';
+  }
+
+  if (scatterChart) scatterChart.destroy();
+  scatterChart = new Chart(canvas, {
+    type: 'scatter',
+    data: { datasets },
+    plugins: [quadrantPlugin, labelPlugin],
+    options: {
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: { display: true, text: '規則覆蓋率 (%)', color: textDim },
+          min: -8, max: 108,
+          ticks: {
+            stepSize: 25,
+            callback: (v) => (v >= 0 && v <= 100) ? `${v}%` : '',
+          },
+          grid: { color: border },
+        },
+        y: {
+          title: { display: true, text: '誤報率 (%)', color: textDim },
+          min: -8, max: 108,
+          ticks: {
+            stepSize: 25,
+            callback: (v) => (v >= 0 && v <= 100) ? `${v}%` : '',
+          },
+          grid: { color: border },
+        },
+      },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: textDim, padding: 16, usePointStyle: true, pointStyleWidth: 14 },
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const p = ctx.raw;
+              const cov = p.origX ?? Math.round(p.x);
+              const fp  = p.origY ?? Math.round(p.y);
+              const key = `${cov},${fp}`;
+              const all = coordScenarios[key] || [p.title];
+              const lines = [`規則覆蓋率 ${cov}%  ·  誤報率 ${fp}%`];
+              if (all.length > 1) {
+                lines.push(`（此座標共 ${all.length} 個場景）`);
+                all.forEach(t => lines.push(`  ${t}`));
+              }
+              return lines;
+            },
+            title: (items) => {
+              const p = items[0].raw;
+              const cov = p.origX ?? Math.round(p.x);
+              const fp  = p.origY ?? Math.round(p.y);
+              const key = `${cov},${fp}`;
+              const all = coordScenarios[key] || [p.title];
+              return all.length > 1 ? `重疊點（${all.length} 個場景）` : p.title;
+            },
           },
         },
       },
@@ -482,14 +951,21 @@ async function loadAnalytics(tier = 'all') {
     document.getElementById('summary-row').style.display = 'flex';
     document.getElementById('sum-total-runs').textContent = totalRuns;
     document.getElementById('sum-scenarios-run').textContent = `${ranScenarios.length} / ${matrix.length}`;
-    document.getElementById('sum-success-rate').textContent = avgSuccess != null ? `${Math.round(avgSuccess * 100)}%` : '—';
-    document.getElementById('sum-detection-rate').textContent = avgDetection != null ? `${Math.round(avgDetection * 100)}%` : '—';
-    document.getElementById('sum-rule-coverage').textContent = avgRuleCoverage != null ? `${Math.round(avgRuleCoverage * 100)}%` : '—';
-    document.getElementById('sum-false-positive-rate').textContent = avgFalsePositive != null ? `${Math.round(avgFalsePositive * 100)}%` : '—';
+
+    const setColored = (id, val, invert = false) => {
+      const el = document.getElementById(id);
+      const pct = val != null ? Math.round(val * 100) : null;
+      el.textContent = pct != null ? `${pct}%` : '—';
+      el.style.color = colorForPct(pct, invert);
+    };
+    setColored('sum-success-rate', avgSuccess);
+    setColored('sum-detection-rate', avgDetection);
+    setColored('sum-rule-coverage', avgRuleCoverage);
+    setColored('sum-false-positive-rate', avgFalsePositive, true);
     document.getElementById('sum-baseline-scenarios').textContent = `${baselineScenarios.length} / ${matrix.length}`;
 
     tbody.innerHTML = matrix.map((m) => `
-      <tr>
+      <tr data-scenario="${m.scenario_id}">
         <td>
           <div class="scenario-title">${m.title}</div>
           <div class="scenario-id">${m.scenario_id}</div>
@@ -504,12 +980,32 @@ async function loadAnalytics(tier = 'all') {
         <td class="num-cell ${m.avg_detection_latency_ms == null ? 'dim-cell' : ''}">${formatLatency(m.avg_detection_latency_ms)}</td>
         <td>${falsePositiveCell(m)}</td>
         <td style="font-size:0.74rem">${formatTime(m.last_run_at)}</td>
+        <td>
+          <a href="scenario.html?id=${m.scenario_id}" style="font-size:0.75rem;color:var(--lab-brand);white-space:nowrap;text-decoration:none" title="前往場景詳情">執行 →</a>
+        </td>
       </tr>
     `).join('');
 
     renderRQ2Chart(matrix);
+    renderLatencyChart(matrix);
+    renderScatterChart(matrix);
+
+    // anchor focus
+    const hash = location.hash.slice(1);
+    if (hash) {
+      const row = document.querySelector(`tr[data-scenario="${hash}"]`);
+      if (row) {
+        setTimeout(() => {
+          row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          row.classList.add('highlight-row');
+          setTimeout(() => row.classList.remove('highlight-row'), 3000);
+        }, 300);
+      }
+    }
+
+    lucide.createIcons();
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="11" class="text-red">載入失敗：${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" class="text-red">載入失敗：${e.message}</td></tr>`;
   }
 }
 
@@ -565,54 +1061,104 @@ function renderCompareCharts(bm, fm) {
   Chart.defaults.color = textDim;
   Chart.defaults.borderColor = border;
 
+  // 動態高度
+  const covH = Math.max(280, labels.length * 28 + 50);
+  document.getElementById('compare-cov-wrap').style.height = covH + 'px';
+  document.getElementById('compare-fp-wrap').style.height  = covH + 'px';
+
+  const chartOpts = (titleMap) => ({
+    indexAxis: 'y',
+    maintainAspectRatio: false,
+    scales: {
+      x: { min: 0, max: 100, ticks: { callback: (v) => v + '%' }, grid: { color: border } },
+      y: {
+        grid: { display: false },
+        ticks: { font: { family: 'JetBrains Mono, monospace', size: 11 } },
+      },
+    },
+    plugins: {
+      legend: { position: 'top', labels: { color: textDim, padding: 16, usePointStyle: true } },
+      tooltip: {
+        callbacks: {
+          title: (items) => titleMap[items[0].label] || items[0].label,
+          label: (ctx) => ctx.raw == null ? `${ctx.dataset.label}：無資料` : `${ctx.dataset.label}：${ctx.raw}%`,
+        },
+      },
+    },
+  });
+
+  const titleMap = Object.fromEntries(fm.map((m) => [m.scenario_id, m.title]));
+
   if (compareCoverageChart) compareCoverageChart.destroy();
   compareCoverageChart = new Chart(document.getElementById('compare-coverage-chart'), {
     type: 'bar',
     data: {
       labels,
       datasets: [
-        { label: '🔵 Basic 規則覆蓋率', data: bCov, backgroundColor: '#4fc3f7' },
-        { label: '🟢 Full 規則覆蓋率',  data: fCov, backgroundColor: '#66bb6a' },
-        { label: '🔴 Basic 誤報率',      data: bFP,  backgroundColor: '#ef5350' },
-        { label: '🟠 Full 誤報率',       data: fFP,  backgroundColor: '#ffa726' },
+        { label: 'Basic（8 規則）', data: bCov, backgroundColor: 'rgba(96,165,250,0.8)',  borderColor: '#60a5fa', borderWidth: 1, borderRadius: 3 },
+        { label: 'Full（31 規則）', data: fCov, backgroundColor: 'rgba(86,212,221,0.8)',  borderColor: '#56d4dd', borderWidth: 1, borderRadius: 3 },
+      ],
+    },
+    options: chartOpts(titleMap),
+  });
+
+  if (compareFPChart) compareFPChart.destroy();
+  compareFPChart = new Chart(document.getElementById('compare-fp-chart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Basic（8 規則）', data: bFP, backgroundColor: 'rgba(248,81,73,0.75)',   borderColor: '#f85149', borderWidth: 1, borderRadius: 3 },
+        { label: 'Full（31 規則）', data: fFP, backgroundColor: 'rgba(227,179,65,0.75)',  borderColor: '#e3b341', borderWidth: 1, borderRadius: 3 },
+      ],
+    },
+    options: chartOpts(titleMap),
+  });
+
+  // 告警率圖：按 Full 告警率由高到低排序
+  const alertPairs = fm.map((f) => {
+    const b = bById.get(f.scenario_id);
+    return {
+      id:    f.scenario_id,
+      title: f.title,
+      bVal:  b?.baseline_alert_rate_per_min != null ? Math.round(b.baseline_alert_rate_per_min) : null,
+      fVal:  f.baseline_alert_rate_per_min  != null ? Math.round(f.baseline_alert_rate_per_min) : null,
+    };
+  }).sort((a, b) => (b.fVal ?? 0) - (a.fVal ?? 0));
+
+  const alertLabels    = alertPairs.map((p) => p.id);
+  const alertTitleMap  = Object.fromEntries(alertPairs.map((p) => [p.id, p.title]));
+  const bAlerts = alertPairs.map((p) => p.bVal);
+  const fAlerts = alertPairs.map((p) => p.fVal);
+
+  const alertH = Math.max(240, alertLabels.length * 28 + 50);
+  document.getElementById('compare-alert-wrap').style.height = alertH + 'px';
+
+  if (compareAlertChart) compareAlertChart.destroy();
+  compareAlertChart = new Chart(document.getElementById('compare-alert-chart'), {
+    type: 'bar',
+    data: {
+      labels: alertLabels,
+      datasets: [
+        { label: 'Basic（8 規則）', data: bAlerts, backgroundColor: 'rgba(96,165,250,0.75)', borderColor: '#60a5fa', borderWidth: 1, borderRadius: 2 },
+        { label: 'Full（31 規則）', data: fAlerts, backgroundColor: 'rgba(86,212,221,0.75)', borderColor: '#56d4dd', borderWidth: 1, borderRadius: 2 },
       ],
     },
     options: {
       indexAxis: 'y',
       maintainAspectRatio: false,
       scales: {
-        x: { min: 0, max: 100, ticks: { callback: (v) => v + '%' }, grid: { color: border } },
-        y: { grid: { display: false } },
+        x: { ticks: { callback: (v) => v + '/min' }, grid: { color: border } },
+        y: { grid: { display: false }, ticks: { font: { family: 'JetBrains Mono, monospace', size: 11 } } },
       },
       plugins: {
-        legend: { position: 'top' },
-        tooltip: { callbacks: { label: (ctx) => ctx.raw == null ? `${ctx.dataset.label}：無資料` : `${ctx.dataset.label}：${ctx.raw}%` } },
-      },
-    },
-  });
-
-  const bAlerts = fm.map((f) => { const b = bById.get(f.scenario_id); return b?.baseline_alert_rate_per_min != null ? Math.round(b.baseline_alert_rate_per_min) : null; });
-  const fAlerts = fm.map((f) => f.baseline_alert_rate_per_min != null ? Math.round(f.baseline_alert_rate_per_min) : null);
-
-  if (compareAlertChart) compareAlertChart.destroy();
-  compareAlertChart = new Chart(document.getElementById('compare-alert-chart'), {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        { label: '🔵 Basic 告警率', data: bAlerts, backgroundColor: 'rgba(96,200,255,0.75)' },
-        { label: '🟢 Full 告警率',  data: fAlerts, backgroundColor: 'rgba(80,200,120,0.75)' },
-      ],
-    },
-    options: {
-      maintainAspectRatio: false,
-      scales: {
-        y: { ticks: { callback: (v) => v + '/min' }, grid: { color: border } },
-        x: { grid: { display: false } },
-      },
-      plugins: {
-        legend: { position: 'top' },
-        tooltip: { callbacks: { label: (ctx) => ctx.raw == null ? `${ctx.dataset.label}：無資料` : `${ctx.dataset.label}：${ctx.raw} 則/分` } },
+        legend: { position: 'top', labels: { color: textDim, padding: 16, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            title: (items) => alertTitleMap[items[0].label] || items[0].label,
+            label: (ctx) => ctx.raw == null ? `${ctx.dataset.label}：無資料` : `${ctx.dataset.label}：${ctx.raw} 則/分`,
+          },
+        },
       },
     },
   });
@@ -638,54 +1184,63 @@ function renderCostSection(bm, fm) {
   const noiseRatio = avgB > 0 ? (avgF / avgB).toFixed(2) : '—';
   const bwRatio    = (parseFloat(fc.perHour) > 0 && parseFloat(bc.perHour) > 0) ? (parseFloat(fc.perHour) / parseFloat(bc.perHour)).toFixed(2) : '—';
 
+  // 選擇 Basic 每日節省量（非冗餘指標）
+  const savedPerDay = ((avgF - avgB) * 60 * 24 * AVG_BYTES * containers / 1048576).toFixed(1);
+
   document.getElementById('cost-section').innerHTML = `
-    <div class="section-title" style="margin-top:0">📡 告警處理成本估算（邊緣部署代理量測）</div>
+    <div class="section-title" style="margin-top:0"><i data-lucide="activity"></i> 告警處理成本估算</div>
     <p class="subtitle" style="margin-bottom:0.75rem">
-      以 Baseline 靜置期間的告警量推算在邊緣設備上部署 Falco 的通訊與儲存成本。
-      數字來自實驗量測值，可直接作為論文附錄的代理指標引用。
+      以 Baseline 靜置期間（20 秒）的告警量推算在邊緣設備上長期部署 Falco 的通訊成本。
+      <strong>告警率為 15 種場景 Baseline 的跨場景平均值</strong>，用來估算「一般容器工作負載」下的典型雜訊量。
     </p>
     <div class="cost-assumption">
-      假設：每筆 Falco JSON 告警 ${AVG_BYTES} bytes　×
+      假設：每筆 Falco JSON 告警 ${AVG_BYTES} bytes
+      <span style="color:var(--text-muted);font-size:0.78rem">（實測 Falco JSON 輸出約 200–500 bytes，取 350 bytes 作為中位估計）</span>　×
       <label>監控容器數：<input class="containers-input" id="containers-count" type="number" min="1" max="500" value="${containers}"> 個</label>
-      （更改後自動重算）
+      <span style="color:var(--text-muted);font-size:0.78rem">（更改後自動重算）</span>
     </div>
     <div class="cost-grid">
       <div class="cost-col">
-        <h4>🔵 Basic Tier（8 規則）</h4>
-        <div class="cost-row"><span class="cost-label">平均告警率（每容器）</span><span class="cost-val">${Math.round(avgB)} 則/分</span></div>
+        <h4 style="color:var(--lab-brand)">Basic Tier（8 規則）</h4>
+        <div class="cost-row"><span class="cost-label">15 場景跨 Baseline 平均告警率</span><span class="cost-val">${Math.round(avgB)} 則/分/容器</span></div>
         <div class="cost-row"><span class="cost-label">每小時傳輸量（${containers} 容器）</span><span class="cost-val">${bc.perHour} MB/hr</span></div>
         <div class="cost-row"><span class="cost-label">每日傳輸量（${containers} 容器）</span><span class="cost-val">${bc.perDay} MB/day</span></div>
       </div>
       <div class="cost-col">
-        <h4>🟢 Full Tier（31 規則）</h4>
-        <div class="cost-row"><span class="cost-label">平均告警率（每容器）</span><span class="cost-val">${Math.round(avgF)} 則/分</span></div>
+        <h4 style="color:var(--cyan)">Full Tier（31 規則）</h4>
+        <div class="cost-row"><span class="cost-label">15 場景跨 Baseline 平均告警率</span><span class="cost-val">${Math.round(avgF)} 則/分/容器</span></div>
         <div class="cost-row"><span class="cost-label">每小時傳輸量（${containers} 容器）</span><span class="cost-val">${fc.perHour} MB/hr</span></div>
         <div class="cost-row"><span class="cost-label">每日傳輸量（${containers} 容器）</span><span class="cost-val">${fc.perDay} MB/day</span></div>
       </div>
     </div>
     <div class="compare-summary" style="margin-bottom:1rem">
       <div class="compare-card">
-        <div class="c-label">告警量雜訊倍數（Full / Basic）</div>
+        <div class="c-label">告警量雜訊倍數（Full ÷ Basic）</div>
         <div class="c-vals">
-          <span class="c-val" style="color:#60c8ff">🔵 ${Math.round(avgB)} /min</span>
-          <span class="c-val" style="color:var(--green)">🟢 ${Math.round(avgF)} /min</span>
+          <span class="c-val" style="color:var(--lab-brand);display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--lab-brand);display:inline-block"></span> ${Math.round(avgB)} /min</span>
+          <span class="c-val" style="color:var(--cyan);display:inline-flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--cyan);display:inline-block"></span> ${Math.round(avgF)} /min</span>
           <span class="multiplier-badge" style="font-size:0.9rem">×${noiseRatio}</span>
         </div>
-      </div>
-      <div class="compare-card">
-        <div class="c-label">傳輸頻寬倍數（${containers} 容器）</div>
-        <div class="c-vals">
-          <span class="c-val" style="color:#60c8ff">🔵 ${bc.perHour} MB/hr</span>
-          <span class="c-val" style="color:var(--green)">🟢 ${fc.perHour} MB/hr</span>
-          <span class="multiplier-badge" style="font-size:0.9rem">×${bwRatio}</span>
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.4rem">
+          即 Full Tier 在靜置狀態下產生的告警量是 Basic 的 ${noiseRatio} 倍
         </div>
       </div>
       <div class="compare-card">
-        <div class="c-label">量測說明</div>
-        <div style="font-size:0.74rem;color:var(--text-dim);line-height:1.6">
-          資料來源：20 秒 Baseline 靜置期間的 Falco webhook 計數<br>
-          告警大小：${AVG_BYTES} bytes（Falco JSON 典型值）<br>
-          不含 SIEM 索引、解析與查詢開銷
+        <div class="c-label">選擇 Basic 每日可節省傳輸量（${containers} 容器）</div>
+        <div class="c-vals">
+          <span class="c-val" style="color:var(--green);font-size:1.1rem">${savedPerDay} MB/day</span>
+        </div>
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.4rem">
+          = Full(${fc.perDay} MB) − Basic(${bc.perDay} MB)，代表邊緣節點每日可減少的告警傳輸負擔
+        </div>
+      </div>
+      <div class="compare-card">
+        <div class="c-label">量測限制說明</div>
+        <div style="font-size:0.74rem;color:var(--text-dim);line-height:1.6;font-family:system-ui,sans-serif">
+          · 資料來源：20 秒 Baseline 靜置，換算成每分鐘<br>
+          · 跨場景平均值，不同場景告警率差異顯著（${Math.round(Math.min(...bRates))}–${Math.round(Math.max(...bRates))} 則/分）<br>
+          · 不含 SIEM 索引、解析與儲存查詢開銷<br>
+          · Raspberry Pi 對照實驗（ARM）尚未執行
         </div>
       </div>
     </div>
@@ -700,7 +1255,7 @@ function renderCostSection(bm, fm) {
 async function loadCompare() {
   const tbody = document.querySelector('#compare-table tbody');
   const summaryDiv = document.getElementById('compare-summary');
-  tbody.innerHTML = '<tr><td colspan="10" class="dim-cell">載入中…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="4" class="dim-cell">載入中…</td></tr>';
   summaryDiv.innerHTML = '<div class="compare-card"><div class="c-label">載入中…</div></div>';
   document.getElementById('cost-section').innerHTML = '';
 
@@ -734,25 +1289,34 @@ async function loadCompare() {
       return `<span class="${cls}">${d >= 0 ? '+' : ''}${d}%</span>`;
     }
 
+    // Δ + 子標題（B→F）
+    function deltaDetailCell(bv, fv, invert = false) {
+      if (bv == null && fv == null) return '<span class="dim-cell">—</span>';
+      const bPct = bv != null ? Math.round(bv * 100) : null;
+      const fPct = fv != null ? Math.round(fv * 100) : null;
+      const d = Math.round(((fv ?? 0) - (bv ?? 0)) * 100);
+      const cls = invert
+        ? (d < 0 ? 'delta-pos' : d > 0 ? 'delta-neg' : 'delta-zero')
+        : (d > 0 ? 'delta-pos' : d < 0 ? 'delta-neg' : 'delta-zero');
+      const detail = (bPct != null && fPct != null)
+        ? `<div style="font-size:0.68rem;color:var(--text-muted);margin-top:0.12rem">B: ${bPct}% → F: ${fPct}%</div>`
+        : '';
+      return `<span class="${cls}" style="font-size:0.9rem;font-weight:700">${d >= 0 ? '+' : ''}${d}%</span>${detail}`;
+    }
+
     tbody.innerHTML = fm.map((f) => {
       const b = bById.get(f.scenario_id);
       const bRate = b?.baseline_alert_rate_per_min;
       const fRate = f.baseline_alert_rate_per_min;
-      const mult  = (bRate && fRate) ? (fRate / bRate).toFixed(2) : null;
+      const mult  = (bRate && fRate) ? (fRate / bRate).toFixed(1) : null;
       return `
         <tr>
           <td>
             <div class="scenario-title">${f.title}</div>
             <div class="scenario-id">${f.scenario_id}</div>
           </td>
-          <td>${pctCell(b?.rule_coverage)}</td>
-          <td>${pctCell(f.rule_coverage)}</td>
-          <td>${deltaCell(b?.rule_coverage, f.rule_coverage)}</td>
-          <td>${pctCell(b?.false_positive_rate)}</td>
-          <td>${pctCell(f.false_positive_rate)}</td>
-          <td>${deltaFPCell(b?.false_positive_rate, f.false_positive_rate)}</td>
-          <td class="num-cell">${bRate != null ? Math.round(bRate) + ' /min' : '<span class="dim-cell">—</span>'}</td>
-          <td class="num-cell">${fRate != null ? Math.round(fRate) + ' /min' : '<span class="dim-cell">—</span>'}</td>
+          <td>${deltaDetailCell(b?.rule_coverage, f.rule_coverage)}</td>
+          <td>${deltaDetailCell(b?.false_positive_rate, f.false_positive_rate, true)}</td>
           <td>${mult != null ? `<span class="multiplier-badge">×${mult}</span>` : '<span class="dim-cell">—</span>'}</td>
         </tr>
       `;
@@ -764,7 +1328,9 @@ async function loadCompare() {
     const avgFFP  = avg(fm, 'false_positive_rate');
     const avgBRate = avg(bm.filter((m) => m.baseline_runs > 0), 'baseline_alert_rate_per_min');
     const avgFRate = avg(fm.filter((m) => m.baseline_runs > 0), 'baseline_alert_rate_per_min');
-    const noiseMultiplier = (avgBRate && avgFRate) ? (avgFRate / avgBRate).toFixed(2) : null;
+
+    const basicDot = `<span style="width:8px;height:8px;border-radius:50%;background:var(--lab-brand);display:inline-block;flex-shrink:0"></span>`;
+    const fullDot  = `<span style="width:8px;height:8px;border-radius:50%;background:var(--cyan);display:inline-block;flex-shrink:0"></span>`;
 
     function summaryCard(label, bv, fv, invertDelta = false) {
       const b = pct(bv); const f = pct(fv);
@@ -776,40 +1342,63 @@ async function loadCompare() {
         <div class="compare-card">
           <div class="c-label">${label}</div>
           <div class="c-vals">
-            <span class="c-val" style="color:#60c8ff">🔵 ${b != null ? b + '%' : '—'}</span>
-            <span class="c-val" style="color:var(--green)">🟢 ${f != null ? f + '%' : '—'}</span>
+            <span class="c-val" style="color:var(--lab-brand);display:inline-flex;align-items:center;gap:4px">${basicDot} ${b != null ? b + '%' : '—'}</span>
+            <span class="c-val" style="color:var(--cyan);display:inline-flex;align-items:center;gap:4px">${fullDot} ${f != null ? f + '%' : '—'}</span>
             <span class="c-delta ${dCls}">Δ ${dStr}</span>
           </div>
         </div>
       `;
     }
 
+    // 計算核心結論
+    const covDelta     = (avgBCov != null && avgFCov != null) ? Math.round((avgFCov - avgBCov) * 100) : null;
+    const fpRatio      = (avgBFP && avgFFP) ? (avgFFP / avgBFP).toFixed(1) : null;
+    const noiseRatioN  = (avgBRate && avgFRate) ? (avgFRate / avgBRate).toFixed(1) : null;
+
+    // 研究結論橫條
+    const insightEl = document.getElementById('compare-insight');
+    if (covDelta != null && fpRatio != null) {
+      const covSign = covDelta >= 0 ? `+${covDelta}%` : `${covDelta}%`;
+      const conclusion = parseFloat(fpRatio) > 2
+        ? `Full Tier 規則更多（31 vs 8），但在實驗中覆蓋率只比 Basic 多出 <strong style="color:var(--cyan)">${covSign}</strong>，
+           誤報率卻高出 <strong style="color:var(--red)">${fpRatio}×</strong>${noiseRatioN ? `、告警量多出 <strong style="color:var(--red)">${noiseRatioN}×</strong>` : ''}。
+           <br>→ 在資源受限的邊緣環境中，精選高信度規則（Basic Tier）可在幾乎不犧牲偵測能力的前提下，大幅降低雜訊與處理成本。`
+        : `Full Tier 比 Basic 覆蓋率多出 <strong style="color:var(--cyan)">${covSign}</strong>，
+           誤報率差異約 <strong>${fpRatio}×</strong>${noiseRatioN ? `，告警量差異約 <strong>${noiseRatioN}×</strong>` : ''}。`;
+      insightEl.innerHTML = `<strong style="color:var(--lab-brand)">研究結論（RQ2/RQ3）：</strong>${conclusion}`;
+      insightEl.style.display = 'block';
+    }
+
+    // 計算告警雜訊倍數（用於 summaryDiv 第三張卡）
+    const noiseMultiplier = (avgBRate && avgFRate) ? (avgFRate / avgBRate).toFixed(2) : null;
+
     summaryDiv.innerHTML = [
       summaryCard('平均規則覆蓋率', avgBCov, avgFCov, false),
-      summaryCard('平均誤報率（↓ 佳）', avgBFP, avgFFP, true),
+      summaryCard('平均誤報率（越低越好）', avgBFP, avgFFP, true),
       `<div class="compare-card">
-        <div class="c-label">平均 Baseline 告警率（雜訊）</div>
+        <div class="c-label">平均 Baseline 告警率</div>
         <div class="c-vals">
-          <span class="c-val" style="color:#60c8ff">🔵 ${avgBRate != null ? Math.round(avgBRate) + '/min' : '—'}</span>
-          <span class="c-val" style="color:var(--green)">🟢 ${avgFRate != null ? Math.round(avgFRate) + '/min' : '—'}</span>
+          <span class="c-val" style="color:var(--lab-brand);display:inline-flex;align-items:center;gap:4px">${basicDot} ${avgBRate != null ? Math.round(avgBRate) + '/min' : '—'}</span>
+          <span class="c-val" style="color:var(--cyan);display:inline-flex;align-items:center;gap:4px">${fullDot} ${avgFRate != null ? Math.round(avgFRate) + '/min' : '—'}</span>
           ${noiseMultiplier ? `<span class="multiplier-badge" style="font-size:0.88rem">×${noiseMultiplier}</span>` : ''}
         </div>
       </div>`,
       `<div class="compare-card">
-        <div class="c-label">說明</div>
-        <div style="font-size:0.74rem;color:var(--text-dim);line-height:1.6">
-          Δ = Full − Basic<br>
-          覆蓋率：Δ 正值代表 Full 偵測更廣<br>
-          誤報率：Δ 負值代表 Full 誤報更低<br>
-          <span class="dim-cell">— 表示該 tier 尚無資料</span>
+        <div class="c-label">Δ 的解讀</div>
+        <div style="font-size:0.74rem;color:var(--text-dim);line-height:1.7;font-family:system-ui,sans-serif">
+          Δ = Full 減去 Basic 的差值<br>
+          覆蓋率 Δ <span class="delta-pos">正值</span> → Full 偵測更廣<br>
+          誤報率 Δ <span class="delta-neg">正值</span> → Full 誤報更多（壞）<br>
+          <span class="dim-cell">— 表示該 Tier 尚無資料</span>
         </div>
       </div>`,
     ].join('');
 
     renderCompareCharts(bm, fm);
     renderCostSection(bm, fm);
+    lucide.createIcons();
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="10" class="text-red">載入失敗：${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="text-red">載入失敗：${e.message}</td></tr>`;
     summaryDiv.innerHTML = '';
   }
 }
@@ -919,6 +1508,51 @@ document.getElementById('download-compare-csv-btn').addEventListener('click', ()
 });
 
 // ── 初始化 ────────────────────────────────────────
+lucide.createIcons();
+
+// Info tooltip：position:fixed 定位，逃脫 overflow 裁切
+(function initInfoTips() {
+  document.querySelectorAll('.info-tip').forEach(tip => {
+    const box = tip.querySelector('.info-tip-box');
+    if (!box) return;
+    tip.addEventListener('mouseenter', () => {
+      box.style.display = 'block';
+      const tr = tip.getBoundingClientRect();
+      const bw = box.offsetWidth, bh = box.offsetHeight;
+      let top = tr.top - bh - 8;
+      let left = tr.left + tr.width / 2 - bw / 2;
+      if (top < 8) top = tr.bottom + 8;
+      if (left < 8) left = 8;
+      if (left + bw > window.innerWidth - 8) left = window.innerWidth - bw - 8;
+      box.style.top = top + 'px';
+      box.style.left = left + 'px';
+    });
+    tip.addEventListener('mouseleave', () => { box.style.display = 'none'; });
+  });
+})();
+
+// 動態新增的 .info-tip 需要重新綁定（觀察 DOM 異動）
+new MutationObserver(() => {
+  document.querySelectorAll('.info-tip:not([data-tip-bound])').forEach(tip => {
+    tip.setAttribute('data-tip-bound', '1');
+    const box = tip.querySelector('.info-tip-box');
+    if (!box) return;
+    tip.addEventListener('mouseenter', () => {
+      box.style.display = 'block';
+      const tr = tip.getBoundingClientRect();
+      const bw = box.offsetWidth, bh = box.offsetHeight;
+      let top = tr.top - bh - 8;
+      let left = tr.left + tr.width / 2 - bw / 2;
+      if (top < 8) top = tr.bottom + 8;
+      if (left < 8) left = 8;
+      if (left + bw > window.innerWidth - 8) left = window.innerWidth - bw - 8;
+      box.style.top = top + 'px';
+      box.style.left = left + 'px';
+    });
+    tip.addEventListener('mouseleave', () => { box.style.display = 'none'; });
+  });
+}).observe(document.body, { childList: true, subtree: true });
+
 loadAnalytics('all');
 loadResourceUsage();
 </script>

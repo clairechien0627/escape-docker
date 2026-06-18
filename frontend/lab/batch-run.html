@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>批次實驗執行 — Escape Docker Lab</title>
+  <title>批次執行 — EdgeSec Lab</title>
   <link rel="stylesheet" href="../css/style.css">
   <style>
     body { overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
@@ -48,12 +48,13 @@
       font-size: 0.8rem;
       color: var(--text-muted);
     }
-    .scenario-item.active   { background: var(--bg-hover); color: var(--blue); }
-    .scenario-item.running  { color: var(--blue); }
+    .scenario-item.active   { background: var(--bg-hover); color: var(--lab-brand); }
+    .scenario-item.running  { color: var(--lab-brand); }
     .scenario-item.success  { color: var(--green); }
     .scenario-item.failed,
     .scenario-item.error    { color: var(--red); }
-    .item-icon  { min-width: 1.1rem; font-size: 0.85rem; }
+    .item-icon  { min-width: 1.1rem; font-size: 0.85rem; display: flex; align-items: center; }
+    .item-icon svg, .item-icon i { width: 14px; height: 14px; }
     .item-name  { flex: 1; font-family: var(--font-mono); }
     .item-badge { font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono); }
 
@@ -64,7 +65,7 @@
     .start-area p { margin-bottom: 1.2rem; }
 
     .run-header { border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
-    .run-title  { font-size: 1.1rem; font-weight: 700; color: var(--green); }
+    .run-title  { font-size: 1.1rem; font-weight: 700; color: var(--lab-brand); }
     .run-meta   { font-size: 0.76rem; color: var(--text-dim); font-family: var(--font-mono); margin-top: 0.2rem; }
 
     .run-layout {
@@ -98,7 +99,7 @@
     .falco-hint { font-size: 0.73rem; color: var(--text-muted); margin-top: 0.6rem; line-height: 1.5; display: none; }
 
     .done-banner { border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem 1.5rem; }
-    .done-banner h2 { color: var(--green); font-size: 1rem; margin-bottom: 0.5rem; }
+    .done-banner h2 { color: var(--green); font-size: 1rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
     .done-stats { display: flex; gap: 2rem; margin-bottom: 0.75rem; }
     .done-stat .num { font-size: 1.6rem; font-weight: 700; color: var(--blue); }
     .done-stat .lbl { font-size: 0.72rem; color: var(--text-muted); }
@@ -108,19 +109,25 @@
     .status-success { color: var(--green); }
     .status-failed, .status-error, .status-timeout { color: var(--red); }
     .status-running, .status-starting { color: var(--blue); }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin-icon { animation: spin 0.8s linear infinite; }
   </style>
 </head>
-<body>
+<body class="lab-page">
 
-<nav class="navbar">
-  <a class="navbar-brand" href="../index.html">🐳 Escape Docker</a>
+<nav class="navbar lab-navbar">
+  <a class="navbar-brand" href="../index.html">
+    <i data-lucide="flask-conical"></i> EdgeSec Lab
+  </a>
   <div class="navbar-links">
-    <a href="../map.html">🗺️ Map</a>
-    <a href="../scoreboard.html">📊 Score</a>
-    <a href="../achievements.html">🏆 成就</a>
-    <a href="index.html" class="active">🧪 Lab</a>
-    <a href="analytics.html">📈 分析</a>
-    <span id="tier-indicator" class="badge badge-dim" title="目前記錄的 Falco 規則 tier；若需切換請至 🧪 Lab 頁面" style="cursor:default">⏳ Tier</span>
+    <a href="index.html">
+      <i data-lucide="layout-grid"></i> 實驗控制台
+    </a>
+    <a href="analytics.html">
+      <i data-lucide="bar-chart-2"></i> 分析儀表板
+    </a>
+    <span id="tier-indicator" class="badge badge-dim" title="目前記錄的 Falco 規則 tier；若需切換請至 Lab 頁面" style="cursor:default"><i data-lucide="layers" style="width:11px;height:11px;vertical-align:middle"></i> Tier</span>
   </div>
 </nav>
 
@@ -142,7 +149,7 @@
     <!-- 開始前提示 -->
     <div class="start-area" id="start-area">
       <p>依序對全部 15 個場景執行 exploit，步驟與 Falco 告警即時顯示於此。</p>
-      <button class="btn btn-primary" id="start-btn">▶ 開始執行全部</button>
+      <button class="btn btn-lab-primary" id="start-btn"><i data-lucide="play" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"></i> 開始執行全部</button>
     </div>
 
     <!-- 執行中：標題 + 輸出 -->
@@ -153,7 +160,7 @@
 
     <div class="run-layout" id="run-layout" style="display:none">
       <div>
-        <div class="section-title">📜 執行步驟（即時）</div>
+        <div class="section-title"><i data-lucide="scroll" style="width:13px;height:13px;vertical-align:middle;margin-right:4px"></i> 執行步驟（即時）</div>
         <div id="steps"><p class="empty-hint">等待第一個步驟…</p></div>
         <div class="result-box" id="result-box">
           <div class="result-row"><span class="result-label">status</span><span id="result-status" class="status-success">—</span></div>
@@ -162,7 +169,7 @@
         </div>
       </div>
       <div>
-        <div class="section-title">🛡️ Falco 告警（即時）</div>
+        <div class="section-title"><i data-lucide="shield-alert" style="width:13px;height:13px;vertical-align:middle;margin-right:4px"></i> Falco 告警（即時）</div>
         <div id="alerts"><p class="empty-hint">尚無告警</p></div>
         <p class="falco-hint" id="falco-hint">
           本次 run 期間未收到即時告警。Falco 在 Docker Desktop/WSL2 環境下
@@ -174,7 +181,7 @@
 
     <!-- 全部完成 -->
     <div class="done-banner" id="done-banner" style="display:none">
-      <h2>✅ 全部場景執行完畢</h2>
+      <h2><i data-lucide="check-circle" style="color:var(--green);width:18px;height:18px"></i> 全部場景執行完畢</h2>
       <div class="done-stats">
         <div class="done-stat"><div class="num" id="done-success">—</div><div class="lbl">成功</div></div>
         <div class="done-stat"><div class="num" id="done-flags">—</div><div class="lbl">FLAG 取得</div></div>
@@ -182,7 +189,7 @@
       </div>
       <p class="done-note">
         Falco 告警將在數分鐘內陸續透過回溯匹配補入各 run 記錄，
-        請至 <a href="index.html">執行歷史</a> 或 <a href="analytics.html">📈 分析</a> 查看完整數據。
+        請至 <a href="index.html">執行歷史</a> 或 <a href="analytics.html">分析儀表板</a> 查看完整數據。
       </p>
     </div>
 
@@ -206,25 +213,37 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-const ICONS = { pending: '⏳', running: '🔵', success: '✅', failed: '❌', error: '⚠️', timeout: '⏱️' };
+function statusIcon(status) {
+  switch (status) {
+    case 'pending':  return '<i data-lucide="minus" style="width:14px;height:14px;color:var(--text-muted)"></i>';
+    case 'running':  return '<i data-lucide="loader" class="spin-icon" style="width:14px;height:14px;color:var(--blue)"></i>';
+    case 'success':  return '<i data-lucide="check-circle" style="width:14px;height:14px;color:var(--green)"></i>';
+    case 'failed':
+    case 'error':    return '<i data-lucide="x-circle" style="width:14px;height:14px;color:var(--red)"></i>';
+    case 'timeout':  return '<i data-lucide="alert-triangle" style="width:14px;height:14px;color:var(--orange)"></i>';
+    default:         return '<i data-lucide="minus" style="width:14px;height:14px;color:var(--text-muted)"></i>';
+  }
+}
 
 function buildList() {
   $('scenario-list-items').innerHTML = scenarios.map((s, i) => `
     <div class="scenario-item pending" id="item-${i}">
-      <span class="item-icon" id="icon-${i}">⏳</span>
+      <span class="item-icon" id="icon-${i}">${statusIcon('pending')}</span>
       <span class="item-name">${s.id}</span>
       <span class="item-badge" id="badge-${i}"></span>
     </div>
   `).join('');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function updateItem(i, status, durationMs, flagFound) {
   const el = $(`item-${i}`);
   if (!el) return;
   el.className = `scenario-item ${status}${i === currentIndex ? ' active' : ''}`;
-  $(`icon-${i}`).textContent = ICONS[status] || '⏳';
+  $(`icon-${i}`).innerHTML = statusIcon(status);
+  if (typeof lucide !== 'undefined') lucide.createIcons($(`icon-${i}`));
   const badge = $(`badge-${i}`);
-  if (durationMs != null) badge.textContent = durationMs + 'ms' + (flagFound ? ' 🚩' : '');
+  if (durationMs != null) badge.textContent = durationMs + 'ms' + (flagFound ? ' F' : '');
 }
 
 function updateProgress() {
@@ -373,6 +392,7 @@ function finishAll() {
   $('done-flags').textContent   = flags;
   $('done-total').textContent   = scenarios.length;
   $('done-banner').style.display = 'block';
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 async function loadTierIndicator() {
@@ -380,13 +400,16 @@ async function loadTierIndicator() {
   if (!badge) return;
   try {
     const { tier } = await apiFetch('/lab/falco-tier');
-    badge.textContent = tier === 'basic' ? '🔵 Basic (8)' : '🟢 Full (31)';
+    badge.innerHTML = tier === 'basic'
+      ? '<i data-lucide="layers" style="width:11px;height:11px;vertical-align:middle"></i> Basic (8)'
+      : '<i data-lucide="layers" style="width:11px;height:11px;vertical-align:middle"></i> Full (31)';
     badge.style.cssText = tier === 'basic'
-      ? 'cursor:default;border-color:#60c8ff;color:#60c8ff'
-      : 'cursor:default;border-color:var(--green);color:var(--green)';
+      ? 'cursor:default;border-color:var(--lab-brand);color:var(--lab-brand)'
+      : 'cursor:default;border-color:var(--cyan);color:var(--cyan)';
     badge.className = 'badge';
+    if (typeof lucide !== 'undefined') lucide.createIcons(badge);
   } catch {
-    badge.textContent = '⚠ Tier 未知';
+    badge.textContent = 'Tier 未知';
   }
 }
 
@@ -412,5 +435,7 @@ $('start-btn').addEventListener('click', () => {
 init();
 loadTierIndicator();
 </script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>lucide.createIcons();</script>
 </body>
 </html>
