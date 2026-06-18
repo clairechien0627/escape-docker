@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>批次實驗執行 — Escape Docker Lab</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    body { overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+
+    .main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ── 左欄：場景清單 ── */
+    .scenario-list {
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .list-header {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 0 0.25rem;
+      margin-bottom: 0.25rem;
+    }
+    .progress-wrap { padding: 0 0.25rem 0.5rem; }
+    .progress-bar { height: 3px; background: var(--bg-hover); border-radius: 2px; }
+    .progress-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.4s; }
+    .progress-text { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.3rem; }
+
+    .scenario-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .scenario-item.active   { background: var(--bg-hover); color: var(--blue); }
+    .scenario-item.running  { color: var(--blue); }
+    .scenario-item.success  { color: var(--green); }
+    .scenario-item.failed,
+    .scenario-item.error    { color: var(--red); }
+    .item-icon  { min-width: 1.1rem; font-size: 0.85rem; }
+    .item-name  { flex: 1; font-family: var(--font-mono); }
+    .item-badge { font-size: 0.68rem; color: var(--text-muted); font-family: var(--font-mono); }
+
+    /* ── 右欄：即時輸出 ── */
+    .run-panel { overflow-y: auto; padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+
+    .start-area { text-align: center; padding: 3rem 1rem; color: var(--text-dim); }
+    .start-area p { margin-bottom: 1.2rem; }
+
+    .run-header { border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
+    .run-title  { font-size: 1.1rem; font-weight: 700; color: var(--green); }
+    .run-meta   { font-size: 0.76rem; color: var(--text-dim); font-family: var(--font-mono); margin-top: 0.2rem; }
+
+    .run-layout {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .run-layout { grid-template-columns: 1fr; } }
+
+    .section-title { font-size: 0.88rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.6rem; }
+
+    .step { border: 1px solid var(--border); border-radius: 8px; padding: 0.55rem 0.75rem; margin-bottom: 0.55rem; }
+    .step-head { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.83rem; }
+    .step-name { flex-grow: 1; color: var(--text-main); }
+    .step-ok  { color: var(--green); }
+    .step-bad { color: var(--red); }
+    .step-dur { color: var(--text-muted); font-size: 0.7rem; }
+    .step pre { margin-top: 0.45rem; white-space: pre-wrap; word-break: break-all; font-size: 0.76rem; color: var(--text-dim); max-height: 180px; overflow-y: auto; }
+
+    .alert-item { border-left: 3px solid var(--orange); padding: 0.4rem 0.6rem; margin-bottom: 0.5rem; font-size: 0.76rem; background: var(--bg-hover); border-radius: 0 6px 6px 0; }
+    .alert-rule { color: var(--orange); font-weight: 700; }
+    .alert-output { color: var(--text-dim); margin-top: 0.2rem; word-break: break-all; }
+
+    .result-box { border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin-top: 0.5rem; font-size: 0.83rem; display: none; }
+    .result-box.show { display: block; }
+    .result-row { display: flex; justify-content: space-between; padding: 0.18rem 0; }
+    .result-label { color: var(--text-muted); }
+    .flag-val { font-family: monospace; color: var(--cyan); }
+
+    .falco-hint { font-size: 0.73rem; color: var(--text-muted); margin-top: 0.6rem; line-height: 1.5; display: none; }
+
+    .done-banner { border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem 1.5rem; }
+    .done-banner h2 { color: var(--green); font-size: 1rem; margin-bottom: 0.5rem; }
+    .done-stats { display: flex; gap: 2rem; margin-bottom: 0.75rem; }
+    .done-stat .num { font-size: 1.6rem; font-weight: 700; color: var(--blue); }
+    .done-stat .lbl { font-size: 0.72rem; color: var(--text-muted); }
+    .done-note { font-size: 0.78rem; color: var(--text-dim); }
+
+    .empty-hint { color: var(--text-muted); font-size: 0.8rem; }
+    .status-success { color: var(--green); }
+    .status-failed, .status-error, .status-timeout { color: var(--red); }
+    .status-running, .status-starting { color: var(--blue); }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="navbar-brand" href="../index.html">🐳 Escape Docker</a>
+  <div class="navbar-links">
+    <a href="../map.html">🗺️ Map</a>
+    <a href="../scoreboard.html">📊 Score</a>
+    <a href="../achievements.html">🏆 成就</a>
+    <a href="index.html" class="active">🧪 Lab</a>
+    <a href="analytics.html">📈 分析</a>
+    <span id="tier-indicator" class="badge badge-dim" title="目前記錄的 Falco 規則 tier；若需切換請至 🧪 Lab 頁面" style="cursor:default">⏳ Tier</span>
+  </div>
+</nav>
+
+<div class="main">
+
+  <!-- 左欄：場景清單 -->
+  <div class="scenario-list">
+    <div class="list-header">場景進度</div>
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+      <div class="progress-text" id="progress-text">載入中…</div>
+    </div>
+    <div id="scenario-list-items"></div>
+  </div>
+
+  <!-- 右欄：即時輸出 -->
+  <div class="run-panel" id="run-panel">
+
+    <!-- 開始前提示 -->
+    <div class="start-area" id="start-area">
+      <p>依序對全部 15 個場景執行 exploit，步驟與 Falco 告警即時顯示於此。</p>
+      <button class="btn btn-primary" id="start-btn">▶ 開始執行全部</button>
+    </div>
+
+    <!-- 執行中：標題 + 輸出 -->
+    <div id="run-header" class="run-header" style="display:none">
+      <div class="run-title" id="run-title">—</div>
+      <div class="run-meta">run id: <span id="run-id">—</span> · 狀態：<span id="run-status">—</span></div>
+    </div>
+
+    <div class="run-layout" id="run-layout" style="display:none">
+      <div>
+        <div class="section-title">📜 執行步驟（即時）</div>
+        <div id="steps"><p class="empty-hint">等待第一個步驟…</p></div>
+        <div class="result-box" id="result-box">
+          <div class="result-row"><span class="result-label">status</span><span id="result-status" class="status-success">—</span></div>
+          <div class="result-row"><span class="result-label">flag_found</span><span class="flag-val" id="result-flag">—</span></div>
+          <div class="result-row"><span class="result-label">duration_ms</span><span id="result-duration">—</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="section-title">🛡️ Falco 告警（即時）</div>
+        <div id="alerts"><p class="empty-hint">尚無告警</p></div>
+        <p class="falco-hint" id="falco-hint">
+          本次 run 期間未收到即時告警。Falco 在 Docker Desktop/WSL2 環境下
+          webhook 可能延遲數分鐘，回溯匹配完成後可至
+          <a href="index.html">執行歷史</a>查看詳細告警。
+        </p>
+      </div>
+    </div>
+
+    <!-- 全部完成 -->
+    <div class="done-banner" id="done-banner" style="display:none">
+      <h2>✅ 全部場景執行完畢</h2>
+      <div class="done-stats">
+        <div class="done-stat"><div class="num" id="done-success">—</div><div class="lbl">成功</div></div>
+        <div class="done-stat"><div class="num" id="done-flags">—</div><div class="lbl">FLAG 取得</div></div>
+        <div class="done-stat"><div class="num" id="done-total">—</div><div class="lbl">場景總數</div></div>
+      </div>
+      <p class="done-note">
+        Falco 告警將在數分鐘內陸續透過回溯匹配補入各 run 記錄，
+        請至 <a href="index.html">執行歷史</a> 或 <a href="analytics.html">📈 分析</a> 查看完整數據。
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="../js/api.js"></script>
+<script>
+let scenarios = [];
+let results = [];
+let currentIndex = -1;
+let stepsRendered = 0;
+let alertsRendered = 0;
+
+const $ = (id) => document.getElementById(id);
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+const ICONS = { pending: '⏳', running: '🔵', success: '✅', failed: '❌', error: '⚠️', timeout: '⏱️' };
+
+function buildList() {
+  $('scenario-list-items').innerHTML = scenarios.map((s, i) => `
+    <div class="scenario-item pending" id="item-${i}">
+      <span class="item-icon" id="icon-${i}">⏳</span>
+      <span class="item-name">${s.id}</span>
+      <span class="item-badge" id="badge-${i}"></span>
+    </div>
+  `).join('');
+}
+
+function updateItem(i, status, durationMs, flagFound) {
+  const el = $(`item-${i}`);
+  if (!el) return;
+  el.className = `scenario-item ${status}${i === currentIndex ? ' active' : ''}`;
+  $(`icon-${i}`).textContent = ICONS[status] || '⏳';
+  const badge = $(`badge-${i}`);
+  if (durationMs != null) badge.textContent = durationMs + 'ms' + (flagFound ? ' 🚩' : '');
+}
+
+function updateProgress() {
+  const done = results.length;
+  const total = scenarios.length;
+  $('progress-fill').style.width = (total ? Math.round(done / total * 100) : 0) + '%';
+  $('progress-text').textContent = `${done} / ${total} 完成`;
+}
+
+function clearPanel() {
+  stepsRendered = 0;
+  alertsRendered = 0;
+  $('steps').innerHTML = '<p class="empty-hint">等待第一個步驟…</p>';
+  $('alerts').innerHTML = '<p class="empty-hint">尚無告警</p>';
+  $('result-box').classList.remove('show');
+  $('falco-hint').style.display = 'none';
+}
+
+function setRunStatus(status) {
+  const el = $('run-status');
+  el.textContent = status;
+  el.className = `status-${status}`;
+}
+
+function addStep(step) {
+  if (stepsRendered === 0) $('steps').innerHTML = '';
+  stepsRendered++;
+  const exitClass = step.exit_code === 0 ? 'step-ok' : 'step-bad';
+  const div = document.createElement('div');
+  div.className = 'step';
+  div.innerHTML = `
+    <div class="step-head">
+      <span class="step-name">#${step.index} ${escapeHtml(step.name)}</span>
+      <span class="${exitClass}">exit ${step.exit_code}</span>
+      <span class="step-dur">${step.duration_ms} ms</span>
+    </div>
+    <pre>${escapeHtml(step.output || '')}</pre>
+  `;
+  $('steps').appendChild(div);
+  div.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function addAlert(alert) {
+  if (alertsRendered === 0) $('alerts').innerHTML = '';
+  alertsRendered++;
+  const div = document.createElement('div');
+  div.className = 'alert-item';
+  div.innerHTML = `
+    <div class="alert-rule">${escapeHtml(alert.rule || '(unknown)')}</div>
+    <div class="alert-output">${escapeHtml(alert.output || '')}</div>
+  `;
+  $('alerts').prepend(div);
+}
+
+function onResult(result, i) {
+  setRunStatus(result.status);
+  $('result-status').textContent = result.status;
+  $('result-status').className = `status-${result.status}`;
+  $('result-flag').textContent = result.flag_found || '—';
+  $('result-duration').textContent = result.duration_ms != null ? `${result.duration_ms} ms` : '—';
+  $('result-box').classList.add('show');
+  if (alertsRendered === 0) $('falco-hint').style.display = 'block';
+
+  updateItem(i, result.status, result.duration_ms, result.flag_found);
+  results.push(result);
+  updateProgress();
+}
+
+async function runScenario(i) {
+  if (i >= scenarios.length) { finishAll(); return; }
+
+  currentIndex = i;
+  const s = scenarios[i];
+
+  // 更新左欄
+  updateItem(i, 'running', null, null);
+  const itemEl = $(`item-${i}`);
+  if (itemEl) itemEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+  // 清空右欄
+  clearPanel();
+  $('run-header').style.display = 'block';
+  $('run-layout').style.display  = 'grid';
+  $('run-title').textContent = `${s.id} — ${s.title}`;
+  setRunStatus('starting');
+  $('run-id').textContent = '—';
+
+  try {
+    const run = await apiFetch('/lab/runs', {
+      method: 'POST',
+      body: JSON.stringify({ scenario_id: s.id }),
+    });
+    $('run-id').textContent = run.id;
+
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${location.host}/api/lab/runs/${encodeURIComponent(run.id)}/stream`);
+
+    let handled = false;
+    function advance(status, durationMs, flagFound) {
+      if (handled) return;
+      handled = true;
+      updateItem(i, status, durationMs, flagFound);
+      results.push({ scenario_id: s.id, id: run.id, status });
+      updateProgress();
+      ws.close();
+      setTimeout(() => runScenario(i + 1), 600);
+    }
+
+    ws.addEventListener('message', (ev) => {
+      const msg = JSON.parse(ev.data);
+      switch (msg.type) {
+        case 'status': setRunStatus(msg.status); break;
+        case 'step':   addStep(msg); break;
+        case 'alert':  addAlert(msg.alert); break;
+        case 'result':
+          onResult(msg, i);
+          advance(msg.status, msg.duration_ms, msg.flag_found);
+          break;
+        case 'error':
+          setRunStatus('error');
+          advance('error', null, null);
+          break;
+      }
+    });
+
+    ws.addEventListener('close', () => advance('error', null, null));
+    ws.addEventListener('error', () => toast(`WebSocket 連線失敗（${s.id}）`, 'error'));
+
+  } catch (e) {
+    toast(`啟動失敗（${s.id}）：${e.message}`, 'error');
+    updateItem(i, 'error', null, null);
+    results.push({ scenario_id: s.id, status: 'error' });
+    updateProgress();
+    setTimeout(() => runScenario(i + 1), 600);
+  }
+}
+
+function finishAll() {
+  currentIndex = -1;
+  $('run-header').style.display = 'none';
+  $('run-layout').style.display  = 'none';
+
+  const success = results.filter(r => r.status === 'success').length;
+  const flags   = results.filter(r => r.flag_found).length;
+  $('done-success').textContent = success;
+  $('done-flags').textContent   = flags;
+  $('done-total').textContent   = scenarios.length;
+  $('done-banner').style.display = 'block';
+}
+
+async function loadTierIndicator() {
+  const badge = document.getElementById('tier-indicator');
+  if (!badge) return;
+  try {
+    const { tier } = await apiFetch('/lab/falco-tier');
+    badge.textContent = tier === 'basic' ? '🔵 Basic (8)' : '🟢 Full (31)';
+    badge.style.cssText = tier === 'basic'
+      ? 'cursor:default;border-color:#60c8ff;color:#60c8ff'
+      : 'cursor:default;border-color:var(--green);color:var(--green)';
+    badge.className = 'badge';
+  } catch {
+    badge.textContent = '⚠ Tier 未知';
+  }
+}
+
+async function init() {
+  try {
+    scenarios = await apiFetch('/lab/scenarios');
+    buildList();
+    $('progress-text').textContent = `0 / ${scenarios.length} 完成`;
+  } catch (e) {
+    $('scenario-list-items').innerHTML = `<p class="text-red">載入失敗：${e.message}</p>`;
+  }
+}
+
+$('start-btn').addEventListener('click', () => {
+  if (!scenarios.length) return;
+  $('start-area').style.display = 'none';
+  $('done-banner').style.display = 'none';
+  results = [];
+  updateProgress();
+  runScenario(0);
+});
+
+init();
+loadTierIndicator();
+</script>
+</body>
+</html>

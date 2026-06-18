@@ -62,6 +62,37 @@
     .toolbar .hint { font-size: 0.78rem; color: var(--text-dim); margin-right: auto; }
 
     .section-title { font-size: 1rem; font-weight: 700; color: var(--text-main); margin: 1.5rem 0 0.75rem; }
+
+    .tier-tabs { display: flex; gap: 0.4rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .tier-tab { padding: 0.35rem 0.9rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-dim); cursor: pointer; font-size: 0.82rem; transition: background 0.15s; }
+    .tier-tab.active { border-color: var(--green); color: var(--green); background: var(--bg-hover); font-weight: 600; }
+    .tier-tab:hover:not(.active) { background: var(--bg-hover); color: var(--text-main); }
+
+    .compare-summary { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .compare-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; flex: 1; min-width: 160px; }
+    .compare-card .c-label { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 0.4rem; }
+    .compare-card .c-vals { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+    .compare-card .c-val { font-size: 1rem; font-weight: 600; }
+    .compare-card .c-delta { font-size: 0.85rem; font-weight: 600; }
+    .delta-pos { color: var(--green); }
+    .delta-neg { color: var(--red); }
+    .delta-zero { color: var(--text-muted); }
+    .compare-table-wrap { overflow-x: auto; }
+
+    /* 告警成本區塊 */
+    .cost-section { margin-top: 0; }
+    .cost-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    @media (max-width: 640px) { .cost-grid { grid-template-columns: 1fr; } }
+    .cost-col { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 0.85rem 1.1rem; }
+    .cost-col h4 { font-size: 0.78rem; font-weight: 600; margin: 0 0 0.6rem; color: var(--text-main); }
+    .cost-row { display: flex; justify-content: space-between; font-size: 0.8rem; padding: 0.25rem 0; border-bottom: 1px solid var(--bg-hover); }
+    .cost-row:last-child { border-bottom: none; }
+    .cost-label { color: var(--text-muted); }
+    .cost-val { font-variant-numeric: tabular-nums; color: var(--text-dim); font-weight: 600; }
+    .multiplier-badge { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.76rem; font-weight: 700; background: rgba(255,160,50,0.15); color: var(--orange); }
+    .containers-input { width: 60px; background: var(--bg-hover); border: 1px solid var(--border); color: var(--text-main); border-radius: 4px; padding: 0.2rem 0.4rem; font-size: 0.8rem; text-align: center; }
+    .cost-assumption { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.85rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    .cost-assumption label { color: var(--text-dim); }
   </style>
 </head>
 <body>
@@ -81,9 +112,73 @@
   <h1>📈 偵測率 / 誤報率分析</h1>
   <p class="subtitle">彙整 15 個場景的歷史執行結果：成功率、FLAG 取得率、平均耗時、Falco 偵測率、規則覆蓋率與偵測延遲（RQ2）。</p>
 
+  <div class="tier-tabs" id="tier-tabs">
+    <button class="tier-tab active" data-tier="all">全部</button>
+    <button class="tier-tab" data-tier="full">🟢 Full Tier（31 規則）</button>
+    <button class="tier-tab" data-tier="basic">🔵 Basic Tier（8 規則）</button>
+    <button class="tier-tab" data-tier="compare">⚖ Tier 對比</button>
+  </div>
+
+  <!-- ══ 對比模式 ══ -->
+  <div id="compare-view" style="display:none">
+    <div class="compare-summary" id="compare-summary">
+      <div class="compare-card"><div class="c-label">載入中…</div></div>
+    </div>
+
+    <div class="toolbar" style="margin-bottom:0.5rem">
+      <button class="btn" id="download-compare-csv-btn">⬇ 下載比對 CSV</button>
+    </div>
+
+    <div class="compare-table-wrap card">
+      <table id="compare-table">
+        <thead>
+          <tr>
+            <th>場景</th>
+            <th>🔵 Basic 覆蓋率</th>
+            <th>🟢 Full 覆蓋率</th>
+            <th>Δ 覆蓋率</th>
+            <th>🔵 Basic 誤報率</th>
+            <th>🟢 Full 誤報率</th>
+            <th>Δ 誤報率</th>
+            <th>🔵 Basic 告警率</th>
+            <th>🟢 Full 告警率</th>
+            <th>雜訊倍數</th>
+          </tr>
+        </thead>
+        <tbody><tr><td colspan="10" class="dim-cell">載入中…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="section-title" style="margin-top:1.5rem">📊 規則覆蓋率與誤報率：Tier 對比圖</div>
+    <p class="subtitle" style="margin-bottom:0.75rem">
+      每場景並排顯示 Basic（藍）與 Full（綠）的規則覆蓋率，以及兩個 Tier 的誤報率（Basic 淺藍、Full 橘）。
+      理想情境：覆蓋率長條長，誤報率長條短。
+    </p>
+    <div class="card" style="margin-bottom:1.5rem">
+      <div style="position:relative;height:650px">
+        <canvas id="compare-coverage-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="section-title">📡 Baseline 告警率：Tier 對比圖</div>
+    <p class="subtitle" style="margin-bottom:0.75rem">
+      靜置 20 秒期間每分鐘產生的告警數量；數值越低代表在邊緣設備上的雜訊越小、處理成本越低。
+    </p>
+    <div class="card" style="margin-bottom:1.5rem">
+      <div style="position:relative;height:300px">
+        <canvas id="compare-alert-chart"></canvas>
+      </div>
+    </div>
+
+    <div id="cost-section"></div>
+  </div><!-- end compare-view -->
+
+  <!-- ══ 單一 Tier 視圖 ══ -->
+  <div id="single-tier-view">
   <div class="toolbar">
     <span class="hint">執行單一場景或批次執行 / Baseline，請至「🧪 Lab」頁面</span>
     <a class="btn" href="index.html">🧪 前往 Lab 執行頁</a>
+    <button class="btn" id="download-csv-btn">⬇ 下載 CSV</button>
     <button class="btn btn-danger" id="clear-history-btn">🗑️ 清除歷史記錄</button>
   </div>
 
@@ -194,6 +289,8 @@
     </div>
   </div>
 
+  </div><!-- end single-tier-view -->
+
   <div class="section-title">⚙️ Falco 資源開銷（RQ3 代理量測）</div>
   <p class="subtitle" style="margin-bottom: 0.75rem;">
     沒有 Raspberry Pi 時，以 x86 環境的 <code>docker stats</code> 快照量化
@@ -227,6 +324,16 @@
 <script src="../js/api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+// ── 狀態 ──────────────────────────────────────────
+let _currentMatrix = null;
+let _currentTier = 'all';
+let _compareBM = null;
+let _compareFM = null;
+let compareCoverageChart = null;
+let compareAlertChart = null;
+let rq2Chart = null;
+
+// ── 共用 cell 渲染 ────────────────────────────────
 function rateCell(rate) {
   if (rate == null) return '<span class="dim-cell">—</span>';
   const pct = Math.round(rate * 100);
@@ -265,7 +372,6 @@ function falsePositiveCell(m) {
     return '<span class="dim-cell" title="尚未執行過 Baseline（至「🧪 Lab」頁面對此場景按「🔬 Baseline (20s)」）">—</span>';
   }
   const pct = Math.round(m.false_positive_rate * 100);
-  // 誤報率越低越好：反轉 good/bad 配色（與其他比率欄位相反）
   const cls = pct <= 20 ? 'good' : pct >= 60 ? 'bad' : 'mid';
   const rulesText = m.false_positive_rules.length ? `誤報規則：${m.false_positive_rules.join('、')}` : '無誤報規則';
   const rateText = m.baseline_alert_rate_per_min != null ? `，告警率約 ${m.baseline_alert_rate_per_min.toFixed(1)} 則/分鐘` : '';
@@ -283,8 +389,12 @@ function formatTime(iso) {
   return new Date(iso).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-let rq2Chart = null;
+function avg(arr, key) {
+  const vals = arr.filter((m) => m[key] != null);
+  return vals.length ? vals.reduce((s, m) => s + m[key], 0) / vals.length : null;
+}
 
+// ── RQ2 圖表（單一 Tier 視圖）────────────────────
 function renderRQ2Chart(matrix) {
   const canvas = document.getElementById('rq2-chart');
   const empty = document.getElementById('rq2-chart-empty');
@@ -317,31 +427,16 @@ function renderRQ2Chart(matrix) {
     data: {
       labels,
       datasets: [
-        {
-          label: '規則覆蓋率 (%)',
-          data: coverage,
-          backgroundColor: green,
-        },
-        {
-          label: '誤報率 (%)',
-          data: falsePositive,
-          backgroundColor: orange,
-        },
+        { label: '規則覆蓋率 (%)', data: coverage, backgroundColor: green },
+        { label: '誤報率 (%)', data: falsePositive, backgroundColor: orange },
       ],
     },
     options: {
       indexAxis: 'y',
       maintainAspectRatio: false,
       scales: {
-        x: {
-          min: 0,
-          max: 100,
-          ticks: { callback: (v) => `${v}%` },
-          grid: { color: border },
-        },
-        y: {
-          grid: { display: false },
-        },
+        x: { min: 0, max: 100, ticks: { callback: (v) => `${v}%` }, grid: { color: border } },
+        y: { grid: { display: false } },
       },
       plugins: {
         legend: { position: 'top', labels: { color: textDim } },
@@ -355,10 +450,17 @@ function renderRQ2Chart(matrix) {
   });
 }
 
-async function loadAnalytics() {
+// ── 單一 Tier 主載入 ──────────────────────────────
+async function loadAnalytics(tier = 'all') {
   const tbody = document.querySelector('#matrix-table tbody');
   try {
-    const matrix = await apiFetch('/lab/analytics/detection-matrix');
+    const url = tier === 'all'
+      ? '/lab/analytics/detection-matrix'
+      : `/lab/analytics/detection-matrix?tier=${tier}`;
+    const matrix = await apiFetch(url);
+
+    _currentMatrix = matrix;
+    _currentTier = tier;
 
     const totalRuns = matrix.reduce((sum, m) => sum + m.runs, 0);
     const ranScenarios = matrix.filter((m) => m.runs > 0);
@@ -411,6 +513,7 @@ async function loadAnalytics() {
   }
 }
 
+// ── 資源用量 ──────────────────────────────────────
 async function loadResourceUsage() {
   const tbody = document.querySelector('#resource-table tbody');
   const collectedAt = document.getElementById('resource-collected-at');
@@ -442,6 +545,356 @@ async function loadResourceUsage() {
   }
 }
 
+// ── Tier 比對圖表 ─────────────────────────────────
+function renderCompareCharts(bm, fm) {
+  const style = getComputedStyle(document.body);
+  const textDim = style.getPropertyValue('--text-dim').trim();
+  const border = style.getPropertyValue('--border').trim();
+  const green = '#50c878';
+  const blue = '#60c8ff';
+  const orange = style.getPropertyValue('--orange').trim() || '#ffa032';
+
+  const labels = fm.map((m) => m.scenario_id);
+  const bById = new Map(bm.map((m) => [m.scenario_id, m]));
+
+  const bCov = fm.map((f) => { const b = bById.get(f.scenario_id); return b?.rule_coverage != null ? Math.round(b.rule_coverage * 100) : null; });
+  const fCov = fm.map((f) => f.rule_coverage != null ? Math.round(f.rule_coverage * 100) : null);
+  const bFP  = fm.map((f) => { const b = bById.get(f.scenario_id); return b?.false_positive_rate != null ? Math.round(b.false_positive_rate * 100) : null; });
+  const fFP  = fm.map((f) => f.false_positive_rate != null ? Math.round(f.false_positive_rate * 100) : null);
+
+  Chart.defaults.color = textDim;
+  Chart.defaults.borderColor = border;
+
+  if (compareCoverageChart) compareCoverageChart.destroy();
+  compareCoverageChart = new Chart(document.getElementById('compare-coverage-chart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '🔵 Basic 規則覆蓋率', data: bCov, backgroundColor: '#4fc3f7' },
+        { label: '🟢 Full 規則覆蓋率',  data: fCov, backgroundColor: '#66bb6a' },
+        { label: '🔴 Basic 誤報率',      data: bFP,  backgroundColor: '#ef5350' },
+        { label: '🟠 Full 誤報率',       data: fFP,  backgroundColor: '#ffa726' },
+      ],
+    },
+    options: {
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      scales: {
+        x: { min: 0, max: 100, ticks: { callback: (v) => v + '%' }, grid: { color: border } },
+        y: { grid: { display: false } },
+      },
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: { callbacks: { label: (ctx) => ctx.raw == null ? `${ctx.dataset.label}：無資料` : `${ctx.dataset.label}：${ctx.raw}%` } },
+      },
+    },
+  });
+
+  const bAlerts = fm.map((f) => { const b = bById.get(f.scenario_id); return b?.baseline_alert_rate_per_min != null ? Math.round(b.baseline_alert_rate_per_min) : null; });
+  const fAlerts = fm.map((f) => f.baseline_alert_rate_per_min != null ? Math.round(f.baseline_alert_rate_per_min) : null);
+
+  if (compareAlertChart) compareAlertChart.destroy();
+  compareAlertChart = new Chart(document.getElementById('compare-alert-chart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '🔵 Basic 告警率', data: bAlerts, backgroundColor: 'rgba(96,200,255,0.75)' },
+        { label: '🟢 Full 告警率',  data: fAlerts, backgroundColor: 'rgba(80,200,120,0.75)' },
+      ],
+    },
+    options: {
+      maintainAspectRatio: false,
+      scales: {
+        y: { ticks: { callback: (v) => v + '/min' }, grid: { color: border } },
+        x: { grid: { display: false } },
+      },
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: { callbacks: { label: (ctx) => ctx.raw == null ? `${ctx.dataset.label}：無資料` : `${ctx.dataset.label}：${ctx.raw} 則/分` } },
+      },
+    },
+  });
+}
+
+// ── 告警處理成本估算 ──────────────────────────────
+function renderCostSection(bm, fm) {
+  const AVG_BYTES = 350;
+  const containers = parseInt(document.getElementById('containers-count')?.value) || 10;
+
+  const bRates = bm.filter((m) => m.baseline_alert_rate_per_min != null).map((m) => m.baseline_alert_rate_per_min);
+  const fRates = fm.filter((m) => m.baseline_alert_rate_per_min != null).map((m) => m.baseline_alert_rate_per_min);
+  const avgB = bRates.length ? bRates.reduce((s, v) => s + v, 0) / bRates.length : 0;
+  const avgF = fRates.length ? fRates.reduce((s, v) => s + v, 0) / fRates.length : 0;
+
+  function calcMB(ratePerMin) {
+    const perHour = (ratePerMin * 60 * AVG_BYTES * containers / 1048576).toFixed(2);
+    const perDay  = (ratePerMin * 60 * 24 * AVG_BYTES * containers / 1048576).toFixed(1);
+    return { perHour, perDay };
+  }
+  const bc = calcMB(avgB);
+  const fc = calcMB(avgF);
+  const noiseRatio = avgB > 0 ? (avgF / avgB).toFixed(2) : '—';
+  const bwRatio    = (parseFloat(fc.perHour) > 0 && parseFloat(bc.perHour) > 0) ? (parseFloat(fc.perHour) / parseFloat(bc.perHour)).toFixed(2) : '—';
+
+  document.getElementById('cost-section').innerHTML = `
+    <div class="section-title" style="margin-top:0">📡 告警處理成本估算（邊緣部署代理量測）</div>
+    <p class="subtitle" style="margin-bottom:0.75rem">
+      以 Baseline 靜置期間的告警量推算在邊緣設備上部署 Falco 的通訊與儲存成本。
+      數字來自實驗量測值，可直接作為論文附錄的代理指標引用。
+    </p>
+    <div class="cost-assumption">
+      假設：每筆 Falco JSON 告警 ${AVG_BYTES} bytes　×
+      <label>監控容器數：<input class="containers-input" id="containers-count" type="number" min="1" max="500" value="${containers}"> 個</label>
+      （更改後自動重算）
+    </div>
+    <div class="cost-grid">
+      <div class="cost-col">
+        <h4>🔵 Basic Tier（8 規則）</h4>
+        <div class="cost-row"><span class="cost-label">平均告警率（每容器）</span><span class="cost-val">${Math.round(avgB)} 則/分</span></div>
+        <div class="cost-row"><span class="cost-label">每小時傳輸量（${containers} 容器）</span><span class="cost-val">${bc.perHour} MB/hr</span></div>
+        <div class="cost-row"><span class="cost-label">每日傳輸量（${containers} 容器）</span><span class="cost-val">${bc.perDay} MB/day</span></div>
+      </div>
+      <div class="cost-col">
+        <h4>🟢 Full Tier（31 規則）</h4>
+        <div class="cost-row"><span class="cost-label">平均告警率（每容器）</span><span class="cost-val">${Math.round(avgF)} 則/分</span></div>
+        <div class="cost-row"><span class="cost-label">每小時傳輸量（${containers} 容器）</span><span class="cost-val">${fc.perHour} MB/hr</span></div>
+        <div class="cost-row"><span class="cost-label">每日傳輸量（${containers} 容器）</span><span class="cost-val">${fc.perDay} MB/day</span></div>
+      </div>
+    </div>
+    <div class="compare-summary" style="margin-bottom:1rem">
+      <div class="compare-card">
+        <div class="c-label">告警量雜訊倍數（Full / Basic）</div>
+        <div class="c-vals">
+          <span class="c-val" style="color:#60c8ff">🔵 ${Math.round(avgB)} /min</span>
+          <span class="c-val" style="color:var(--green)">🟢 ${Math.round(avgF)} /min</span>
+          <span class="multiplier-badge" style="font-size:0.9rem">×${noiseRatio}</span>
+        </div>
+      </div>
+      <div class="compare-card">
+        <div class="c-label">傳輸頻寬倍數（${containers} 容器）</div>
+        <div class="c-vals">
+          <span class="c-val" style="color:#60c8ff">🔵 ${bc.perHour} MB/hr</span>
+          <span class="c-val" style="color:var(--green)">🟢 ${fc.perHour} MB/hr</span>
+          <span class="multiplier-badge" style="font-size:0.9rem">×${bwRatio}</span>
+        </div>
+      </div>
+      <div class="compare-card">
+        <div class="c-label">量測說明</div>
+        <div style="font-size:0.74rem;color:var(--text-dim);line-height:1.6">
+          資料來源：20 秒 Baseline 靜置期間的 Falco webhook 計數<br>
+          告警大小：${AVG_BYTES} bytes（Falco JSON 典型值）<br>
+          不含 SIEM 索引、解析與查詢開銷
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('containers-count')?.addEventListener('input', () => {
+    if (_compareBM && _compareFM) renderCostSection(_compareBM, _compareFM);
+  });
+}
+
+// ── Tier 對比主載入 ───────────────────────────────
+async function loadCompare() {
+  const tbody = document.querySelector('#compare-table tbody');
+  const summaryDiv = document.getElementById('compare-summary');
+  tbody.innerHTML = '<tr><td colspan="10" class="dim-cell">載入中…</td></tr>';
+  summaryDiv.innerHTML = '<div class="compare-card"><div class="c-label">載入中…</div></div>';
+  document.getElementById('cost-section').innerHTML = '';
+
+  try {
+    const [bm, fm] = await Promise.all([
+      apiFetch('/lab/analytics/detection-matrix?tier=basic'),
+      apiFetch('/lab/analytics/detection-matrix?tier=full'),
+    ]);
+    _compareBM = bm;
+    _compareFM = fm;
+
+    const bById = new Map(bm.map((m) => [m.scenario_id, m]));
+
+    function pct(v) { return v == null ? null : Math.round(v * 100); }
+    function pctCell(v) {
+      return v == null ? '<span class="dim-cell">—</span>' : `${Math.round(v * 100)}%`;
+    }
+    function deltaCell(bv, fv) {
+      if (bv == null && fv == null) return '<span class="dim-cell">—</span>';
+      const b = bv ?? 0; const f = fv ?? 0;
+      const d = Math.round((f - b) * 100);
+      const cls = d > 0 ? 'delta-pos' : d < 0 ? 'delta-neg' : 'delta-zero';
+      return `<span class="${cls}">${d >= 0 ? '+' : ''}${d}%</span>`;
+    }
+    function deltaFPCell(bv, fv) {
+      // 誤報率：Full 比 Basic 低（負值）才是好事，反轉顏色
+      if (bv == null && fv == null) return '<span class="dim-cell">—</span>';
+      const b = bv ?? 0; const f = fv ?? 0;
+      const d = Math.round((f - b) * 100);
+      const cls = d < 0 ? 'delta-pos' : d > 0 ? 'delta-neg' : 'delta-zero';
+      return `<span class="${cls}">${d >= 0 ? '+' : ''}${d}%</span>`;
+    }
+
+    tbody.innerHTML = fm.map((f) => {
+      const b = bById.get(f.scenario_id);
+      const bRate = b?.baseline_alert_rate_per_min;
+      const fRate = f.baseline_alert_rate_per_min;
+      const mult  = (bRate && fRate) ? (fRate / bRate).toFixed(2) : null;
+      return `
+        <tr>
+          <td>
+            <div class="scenario-title">${f.title}</div>
+            <div class="scenario-id">${f.scenario_id}</div>
+          </td>
+          <td>${pctCell(b?.rule_coverage)}</td>
+          <td>${pctCell(f.rule_coverage)}</td>
+          <td>${deltaCell(b?.rule_coverage, f.rule_coverage)}</td>
+          <td>${pctCell(b?.false_positive_rate)}</td>
+          <td>${pctCell(f.false_positive_rate)}</td>
+          <td>${deltaFPCell(b?.false_positive_rate, f.false_positive_rate)}</td>
+          <td class="num-cell">${bRate != null ? Math.round(bRate) + ' /min' : '<span class="dim-cell">—</span>'}</td>
+          <td class="num-cell">${fRate != null ? Math.round(fRate) + ' /min' : '<span class="dim-cell">—</span>'}</td>
+          <td>${mult != null ? `<span class="multiplier-badge">×${mult}</span>` : '<span class="dim-cell">—</span>'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const avgBCov = avg(bm, 'rule_coverage');
+    const avgFCov = avg(fm, 'rule_coverage');
+    const avgBFP  = avg(bm, 'false_positive_rate');
+    const avgFFP  = avg(fm, 'false_positive_rate');
+    const avgBRate = avg(bm.filter((m) => m.baseline_runs > 0), 'baseline_alert_rate_per_min');
+    const avgFRate = avg(fm.filter((m) => m.baseline_runs > 0), 'baseline_alert_rate_per_min');
+    const noiseMultiplier = (avgBRate && avgFRate) ? (avgFRate / avgBRate).toFixed(2) : null;
+
+    function summaryCard(label, bv, fv, invertDelta = false) {
+      const b = pct(bv); const f = pct(fv);
+      const d = (b != null && f != null) ? f - b : null;
+      let dCls = 'delta-zero';
+      if (d != null && d !== 0) dCls = ((d > 0) !== invertDelta) ? 'delta-pos' : 'delta-neg';
+      const dStr = d == null ? '—' : (d >= 0 ? `+${d}%` : `${d}%`);
+      return `
+        <div class="compare-card">
+          <div class="c-label">${label}</div>
+          <div class="c-vals">
+            <span class="c-val" style="color:#60c8ff">🔵 ${b != null ? b + '%' : '—'}</span>
+            <span class="c-val" style="color:var(--green)">🟢 ${f != null ? f + '%' : '—'}</span>
+            <span class="c-delta ${dCls}">Δ ${dStr}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    summaryDiv.innerHTML = [
+      summaryCard('平均規則覆蓋率', avgBCov, avgFCov, false),
+      summaryCard('平均誤報率（↓ 佳）', avgBFP, avgFFP, true),
+      `<div class="compare-card">
+        <div class="c-label">平均 Baseline 告警率（雜訊）</div>
+        <div class="c-vals">
+          <span class="c-val" style="color:#60c8ff">🔵 ${avgBRate != null ? Math.round(avgBRate) + '/min' : '—'}</span>
+          <span class="c-val" style="color:var(--green)">🟢 ${avgFRate != null ? Math.round(avgFRate) + '/min' : '—'}</span>
+          ${noiseMultiplier ? `<span class="multiplier-badge" style="font-size:0.88rem">×${noiseMultiplier}</span>` : ''}
+        </div>
+      </div>`,
+      `<div class="compare-card">
+        <div class="c-label">說明</div>
+        <div style="font-size:0.74rem;color:var(--text-dim);line-height:1.6">
+          Δ = Full − Basic<br>
+          覆蓋率：Δ 正值代表 Full 偵測更廣<br>
+          誤報率：Δ 負值代表 Full 誤報更低<br>
+          <span class="dim-cell">— 表示該 tier 尚無資料</span>
+        </div>
+      </div>`,
+    ].join('');
+
+    renderCompareCharts(bm, fm);
+    renderCostSection(bm, fm);
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="10" class="text-red">載入失敗：${e.message}</td></tr>`;
+    summaryDiv.innerHTML = '';
+  }
+}
+
+// ── CSV 下載 ──────────────────────────────────────
+function downloadCSV(matrix, filename) {
+  const headers = ['scenario_id','title','vuln_type','runs','success_rate','flag_rate',
+    'avg_duration_ms','detection_rate','rule_coverage','avg_detection_latency_ms',
+    'false_positive_rate','baseline_alert_rate_per_min','triggered_rules'];
+  const rows = matrix.map((m) => [
+    m.scenario_id,
+    `"${m.title}"`,
+    m.vuln_type,
+    m.runs,
+    m.success_rate        != null ? m.success_rate.toFixed(4) : '',
+    m.flag_rate           != null ? m.flag_rate.toFixed(4) : '',
+    m.avg_duration_ms     ?? '',
+    m.detection_rate      != null ? m.detection_rate.toFixed(4) : '',
+    m.rule_coverage       != null ? m.rule_coverage.toFixed(4) : '',
+    m.avg_detection_latency_ms ?? '',
+    m.false_positive_rate != null ? m.false_positive_rate.toFixed(4) : '',
+    m.baseline_alert_rate_per_min != null ? m.baseline_alert_rate_per_min.toFixed(2) : '',
+    `"${(m.triggered_rules || []).join(';')}"`,
+  ]);
+  const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+  triggerDownload('﻿' + csv, 'text/csv;charset=utf-8', filename);
+}
+
+function downloadCompareCSV(bm, fm) {
+  const bById = new Map(bm.map((m) => [m.scenario_id, m]));
+  const headers = ['scenario_id','title',
+    'basic_rule_coverage','full_rule_coverage','delta_coverage',
+    'basic_false_positive_rate','full_false_positive_rate','delta_fp_rate',
+    'basic_alert_rate_per_min','full_alert_rate_per_min','noise_multiplier',
+    'basic_triggered_rules','full_triggered_rules'];
+  const rows = fm.map((f) => {
+    const b = bById.get(f.scenario_id);
+    const bc  = b?.rule_coverage;
+    const fc  = f.rule_coverage;
+    const bfp = b?.false_positive_rate;
+    const ffp = f.false_positive_rate;
+    const br  = b?.baseline_alert_rate_per_min;
+    const fr  = f.baseline_alert_rate_per_min;
+    return [
+      f.scenario_id,
+      `"${f.title}"`,
+      bc  != null ? bc.toFixed(4) : '',
+      fc  != null ? fc.toFixed(4) : '',
+      (bc != null && fc  != null) ? (fc - bc).toFixed(4) : '',
+      bfp != null ? bfp.toFixed(4) : '',
+      ffp != null ? ffp.toFixed(4) : '',
+      (bfp != null && ffp != null) ? (ffp - bfp).toFixed(4) : '',
+      br  != null ? Math.round(br) : '',
+      fr  != null ? Math.round(fr) : '',
+      (br && fr) ? (fr / br).toFixed(4) : '',
+      `"${(b?.triggered_rules || []).join(';')}"`,
+      `"${(f.triggered_rules  || []).join(';')}"`,
+    ];
+  });
+  const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+  triggerDownload('﻿' + csv, 'text/csv;charset=utf-8', 'tier-compare.csv');
+}
+
+function triggerDownload(content, mimeType, filename) {
+  const blob = new Blob([content], { type: mimeType });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── 事件監聽 ──────────────────────────────────────
+document.getElementById('tier-tabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('.tier-tab');
+  if (!tab) return;
+  const tier = tab.dataset.tier;
+  document.querySelectorAll('.tier-tab').forEach((t) => t.classList.toggle('active', t === tab));
+  const isCompare = tier === 'compare';
+  document.getElementById('compare-view').style.display = isCompare ? 'block' : 'none';
+  document.getElementById('single-tier-view').style.display = isCompare ? 'none' : 'block';
+  if (isCompare) loadCompare();
+  else loadAnalytics(tier);
+});
+
 document.getElementById('refresh-resource-btn').addEventListener('click', loadResourceUsage);
 
 document.getElementById('clear-history-btn').addEventListener('click', async () => {
@@ -455,7 +908,18 @@ document.getElementById('clear-history-btn').addEventListener('click', async () 
   }
 });
 
-loadAnalytics();
+document.getElementById('download-csv-btn').addEventListener('click', () => {
+  if (!_currentMatrix) { toast('尚無資料', 'error'); return; }
+  downloadCSV(_currentMatrix, `detection-matrix-${_currentTier}.csv`);
+});
+
+document.getElementById('download-compare-csv-btn').addEventListener('click', () => {
+  if (!_compareBM || !_compareFM) { toast('尚無對比資料，請先切換至 Tier 對比 tab', 'error'); return; }
+  downloadCompareCSV(_compareBM, _compareFM);
+});
+
+// ── 初始化 ────────────────────────────────────────
+loadAnalytics('all');
 loadResourceUsage();
 </script>
 </body>

@@ -137,10 +137,10 @@
   tags: [tier_full_only, room4]
 
 - rule: Authorized Keys Modified
-  desc: ~/.ssh/authorized_keys 被寫入/修改，可能是橫向移動的後門植入
+  desc: authorized_keys 被寫入/修改，可能是橫向移動的後門植入（匹配 .ssh/ 與 locked-server-ssh/ 等路徑）
   condition: >
     open_write and container and
-    fd.name endswith ".ssh/authorized_keys"
+    fd.name endswith "/authorized_keys"
   output: >
     authorized_keys 被修改 (file=%fd.name container=%container.name proc=%proc.name)
   priority: WARNING
@@ -284,12 +284,12 @@
   tags: [tier_full_only, secret-b]
 
 - rule: Recursive Grep Under Tmp
-  desc: 對 /tmp 下目錄執行遞迴 grep，對應 secret-b 在解壓出的 layer 中搜尋機密字串
+  desc: grep 搜尋 ghost_layer 字串，對應 secret-b 在解壓出的 layer blob 中尋找目標檔案
   condition: >
     spawned_process and container and
-    proc.name = grep and proc.cmdline contains "-r" and proc.cmdline contains "/tmp"
+    proc.name = grep and proc.cmdline contains "ghost_layer"
   output: >
-    對 /tmp 執行遞迴 grep (command=%proc.cmdline container=%container.name)
+    grep 搜尋 ghost_layer (command=%proc.cmdline container=%container.name)
   priority: INFO
   tags: [tier_full_only, secret-b]
 

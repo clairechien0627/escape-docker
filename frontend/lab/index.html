@@ -81,9 +81,11 @@
 
   <div class="toolbar">
     <span class="hint">批次操作會依序對 15 個場景執行，期間請勿關閉此頁面</span>
+    <span id="tier-status" class="badge badge-dim" title="目前記錄的 Falco 規則 tier；切換後需手動以對應旗標重啟 escape-falco 容器使規則生效" style="align-self:center;cursor:default">⏳ Tier 載入中</span>
+    <button class="btn" id="switch-tier-btn" title="記錄目前 Falco 啟用的規則 tier，供後續執行的 run 標記使用">切換 Tier</button>
     <span id="bulk-progress" class="dim-cell" style="font-size: 0.78rem; align-self: center;"></span>
     <button class="btn" id="run-all-baselines-btn" title="依序對 15 個場景各執行一次 20 秒的 Baseline（不執行攻擊，只收集 Falco 告警），用於計算誤報率（false_positive_rate），結果可在「📈 分析」頁查看">🔬 執行全部 Baseline (15×20s)</button>
-    <button class="btn btn-primary" id="run-all-scenarios-btn" title="依序對 15 個場景各執行一次完整 exploit">▶ 執行全部場景 (15)</button>
+    <a class="btn btn-primary" href="batch-run.html" title="開啟即時批次執行頁面，每個場景的步驟與 Falco 告警即時顯示">▶ 執行全部場景 (15)</a>
   </div>
 
   <div class="section-title">📋 場景目錄</div>
@@ -95,7 +97,7 @@
   <div class="card">
     <table id="runs-table">
       <thead>
-        <tr><th>場景</th><th>狀態</th><th>FLAG</th><th>耗時</th><th>開始時間</th><th></th></tr>
+        <tr><th>場景</th><th>Tier / 類型</th><th>狀態</th><th>FLAG</th><th>耗時</th><th>開始時間</th><th></th></tr>
       </thead>
       <tbody><tr><td colspan="6" class="text-dim">載入中…</td></tr></tbody>
     </table>
@@ -248,29 +250,14 @@ async function runAllSequentially({ button, otherButton, progress, endpoint, lab
 
 document.getElementById('run-all-baselines-btn').addEventListener('click', () => {
   const btn = document.getElementById('run-all-baselines-btn');
-  const other = document.getElementById('run-all-scenarios-btn');
   runAllSequentially({
     button: btn,
-    otherButton: other,
+    otherButton: btn,
     progress: document.getElementById('bulk-progress'),
     endpoint: '/lab/baseline-runs',
     label: 'baseline 執行中',
     confirmMsg: '將依序對 15 個場景各執行一次 20 秒的 Baseline（不執行攻擊，只收集 Falco 告警），全部約需數分鐘，期間請勿關閉此頁面。是否繼續？',
     doneMsg: '15 個場景的 Baseline 已全部執行完成',
-  });
-});
-
-document.getElementById('run-all-scenarios-btn').addEventListener('click', () => {
-  const btn = document.getElementById('run-all-scenarios-btn');
-  const other = document.getElementById('run-all-baselines-btn');
-  runAllSequentially({
-    button: btn,
-    otherButton: other,
-    progress: document.getElementById('bulk-progress'),
-    endpoint: '/lab/runs',
-    label: '執行中',
-    confirmMsg: '將依序對 15 個場景各執行一次完整 exploit，全部約需數分鐘，期間請勿關閉此頁面。是否繼續？',
-    doneMsg: '15 個場景已全部執行完成',
   });
 });
 
@@ -290,9 +277,23 @@ async function loadRuns() {
       tbody.innerHTML = '<tr><td colspan="6" class="text-dim">尚無執行紀錄</td></tr>';
       return;
     }
+    function tierTypeCell(r) {
+      const isBaseline = r.type === 'baseline';
+      const t = r.falco_tier;
+      const tierPart = t === 'basic'
+        ? '<span style="color:#60c8ff;font-size:0.7rem">🔵 Basic</span>'
+        : t === 'full'
+          ? '<span style="color:var(--green);font-size:0.7rem">🟢 Full</span>'
+          : '<span style="color:var(--text-muted);font-size:0.7rem">—</span>';
+      const typePart = isBaseline
+        ? '<span style="color:var(--text-muted);font-size:0.7rem"> 🔬</span>'
+        : '';
+      return tierPart + typePart;
+    }
     tbody.innerHTML = runs.slice(0, 30).map((r) => `
       <tr>
         <td>${r.scenario_id}</td>
+        <td>${tierTypeCell(r)}</td>
         <td class="status-${r.status}">${statusLabel(r.status)}</td>
         <td class="flag-val">${r.flag_found || '—'}</td>
         <td>${r.duration_ms != null ? r.duration_ms + ' ms' : '—'}</td>
@@ -305,8 +306,50 @@ async function loadRuns() {
   }
 }
 
+async function loadTierStatus() {
+  const badge = document.getElementById('tier-status');
+  try {
+    const { tier } = await apiFetch('/lab/falco-tier');
+    badge.textContent = tier === 'basic' ? '🔵 Basic Tier (8 規則)' : '🟢 Full Tier (31 規則)';
+    badge.className = 'badge';
+    badge.style.cssText = tier === 'basic'
+      ? 'align-self:center;cursor:default;border-color:#60c8ff;color:#60c8ff'
+      : 'align-self:center;cursor:default;border-color:var(--green);color:var(--green)';
+  } catch {
+    badge.textContent = '⚠ Tier 未知';
+    badge.className = 'badge';
+    badge.style.cssText = 'align-self:center;cursor:default;border-color:var(--red);color:var(--red)';
+  }
+}
+
+document.getElementById('switch-tier-btn').addEventListener('click', async () => {
+  const badge = document.getElementById('tier-status');
+  const isBasic = badge.textContent.includes('Basic');
+  const nextTier = isBasic ? 'full' : 'basic';
+  const nextLabel = nextTier === 'basic' ? 'Basic Tier（8 條核心規則）' : 'Full Tier（31 條規則）';
+  if (!window.confirm(`切換至 ${nextLabel}？\n\nFalco 容器將自動重啟（約 5-10 秒），期間告警暫停，重啟完成後立即生效。`)) return;
+  const btn = document.getElementById('switch-tier-btn');
+  btn.disabled = true;
+  btn.textContent = '重啟中…';
+  try {
+    const result = await apiFetch('/lab/falco-tier', { method: 'POST', body: JSON.stringify({ tier: nextTier }) });
+    loadTierStatus();
+    if (result.restarted) {
+      toast(`已切換至 ${nextLabel}，Falco 已自動重啟完成。`, 'success');
+    } else {
+      toast(`已記錄 ${nextLabel}，但 Falco 重啟失敗：${result.restart_error || '未知'}。請手動執行 docker restart escape-falco。`, 'error');
+    }
+  } catch (e) {
+    toast(`切換失敗：${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '切換 Tier';
+  }
+});
+
 loadScenarios();
 loadRuns();
+loadTierStatus();
 setInterval(loadRuns, 10000);
 </script>
 </body>
