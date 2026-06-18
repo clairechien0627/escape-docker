@@ -1,6 +1,8 @@
-# Escape Docker — Linux 與 Docker 互動式密室逃脫學習平台
+# Edge Container Security Lab
 
-> **Linux 與邊緣運算 期末專案報告**
+> **邊緣容器環境中的攻擊鏈自動化模擬與輕量偵測機制評估**
+>
+> Linux 與邊緣運算 — 期末專案報告
 
 ---
 
@@ -8,39 +10,67 @@
 
 1. [專案概述](#1-專案概述)
 2. [系統架構](#2-系統架構)
-3. [技術選型與理由](#3-技術選型與理由)
-4. [關卡設計](#4-關卡設計)
-5. [核心功能實作](#5-核心功能實作)
-6. [Docker 容器設計](#6-docker-容器設計)
-7. [啟動與操作方式](#7-啟動與操作方式)
-8. [技術挑戰與解決方案](#8-技術挑戰與解決方案)
-9. [學習成果對應](#9-學習成果對應)
-10. [未來擴充方向](#10-未來擴充方向)
+3. [Security Lab 核心模組](#3-security-lab-核心模組)
+4. [攻擊場景設計（RQ1）](#4-攻擊場景設計rq1)
+5. [實驗設計與結果](#5-實驗設計與結果)
+6. [room-manager 動態排程](#6-room-manager-動態排程)
+7. [Story Mode：互動式密室逃脫](#7-story-mode互動式密室逃脫)
+8. [核心技術實作](#8-核心技術實作)
+9. [技術挑戰與解決方案](#9-技術挑戰與解決方案)
+10. [部署說明](#10-部署說明)
+11. [附錄：目錄結構](#11-附錄目錄結構)
 
 ---
 
 ## 1. 專案概述
 
-### 1.1 設計動機
+### 1.1 研究動機
 
-傳統的 Linux / Docker 學習方式以看文件、跟著教學貼指令為主，缺乏實際操作動機。本專案將課程所學轉化為**密室逃脫遊戲**：每一關都是一道謎題，必須真正理解並執行 Linux 指令才能找到 FLAG（通關密語），從而解鎖下一關。
+邊緣裝置（Edge Devices）近年大量被部署為容器執行節點，但與雲端環境相比，邊緣節點在以下三個維度面臨更嚴峻的限制：
 
-### 1.2 專案目標
+- **資源受限**：記憶體通常在 2–8 GB，無法常駐完整監控堆疊
+- **維護困難**：偏遠部署、無法即時人工介入
+- **安全配置複雜**：容器錯誤配置（docker.sock 暴露、SUID 誤設、網路隔離缺失）在邊緣環境更常見
 
-| 目標 | 說明 |
-|------|------|
-| **可玩性** | 網頁直接玩，不需安裝任何額外工具 |
-| **教育性** | 每關對應課程中的一個核心知識點 |
-| **完整性** | 15 個關卡涵蓋 Linux 基礎到 Docker 進階 |
-| **可部署性** | 一個指令啟動，`docker compose up` |
+現有研究多以雲端叢集為對象評估 Falco 等規則式偵測器，尚缺乏針對邊緣單節點環境的系統性實驗。本專案建立一套完整的**攻擊模擬與偵測評估平台**，以自動化方式測試 15 種真實容器錯誤配置場景，並量化 Falco 在資源受限環境中的偵測效能。
+
+### 1.2 研究問題
+
+| 編號 | 研究問題 |
+|------|---------|
+| **RQ1** | 如何依攻擊能力與危害範圍對容器錯誤配置進行風險分級？ |
+| **RQ2** | Falco 規則式偵測器在各場景的偵測有效性為何（規則覆蓋率、偵測延遲、誤報率）？ |
+| **RQ3** | 在邊緣環境中部署 Falco 的資源開銷為何（穩態 CPU/記憶體 + 告警積壓的瞬時影響）？ |
 
 ### 1.3 系統規模
 
-- **15 個遊戲容器**：12 主關 + Final Boss + 2 隱藏關
-- **20+ 個 Docker 服務**：含反向代理、終端機閘道、API、輔助容器
-- **67 個原始碼檔案**
-- **4 個獨立 Docker 網路**
-- 總分上限 **3,500+ 分**（含成就加成）
+| 項目 | 數量 |
+|------|------|
+| 攻擊場景 | 15 個（對應 15 種容器錯誤配置） |
+| 管理服務 | 6 個（nginx / terminal-gateway / scoreboard-api / room-manager / lab-api / falco） |
+| 遊戲容器 | 22 個 |
+| Docker 網路 | 4 個 |
+| Falco 規則（Basic / Full tier） | 8 / 31 條 |
+| Lab 前端頁面 | 3 個（控制台 / 即時檢視 / 分析儀表板） |
+| Story Mode 關卡 | 15 關（含 2 個隱藏關） |
+| 程式碼檔案 | 70+ 個 |
+
+### 1.4 兩個功能模組
+
+本系統包含兩個互補模組，共用同一批容器場景：
+
+```
+Edge Container Security Lab
+  │
+  ├─ Security Lab（主模組）
+  │   ├─ 自動化攻擊腳本執行（lab-api）
+  │   ├─ 即時 Falco 偵測觀察（WebSocket 串流）
+  │   └─ 分析儀表板（RQ1 / RQ2 / RQ3）
+  │
+  └─ Story Mode（副模組）
+      ├─ 互動式密室逃脫（xterm.js 終端機）
+      └─ 計分 / 成就 / 提示系統（scoreboard-api）
+```
 
 ---
 
@@ -49,550 +79,859 @@
 ### 2.1 整體架構圖
 
 ```
-瀏覽器 (http://localhost:80)
-         │
-         ▼
-    ┌─────────────────────────────────────────┐
-    │             Nginx（反向代理）              │
-    │  /           → frontend (HTML/CSS/JS)   │
-    │  /ws         → terminal-gateway         │
-    │  /api/       → scoreboard-api           │
-    └──────┬───────────────┬──────────────────┘
-           │               │
-      WebSocket         REST API
-           │               │
-           ▼               ▼
-    ┌──────────────┐ ┌─────────────────────┐
-    │  terminal-   │ │   scoreboard-api    │
-    │  gateway     │ │  (FastAPI + SQLite) │
-    │ (Node.js +   │ │                     │
-    │  node-pty)   │ │  FLAG 驗證 / 排行榜  │
-    └──────┬───────┘ │  成就 / 提示系統     │
-           │         └─────────────────────┘
-    docker exec -it <room> bash
-           │
-    ┌──────┴──────────────────────────────────┐
-    │           Docker Compose 服務群           │
-    │  room0  room1  room2  room3  room4  room5 │
-    │  room6  room7  room8  room9               │
-    │  room10 room11 final                      │
-    │  secret-a  secret-b                       │
-    │  locked-server  secret-server  vault      │
-    │  ghost-alpha  ghost-beta  ghost-gamma      │
-    └─────────────────────────────────────────┘
+  瀏覽器 (http://localhost)
+          │
+          │ HTTP / WebSocket
+          ▼
+  ┌─────────────────────────────────────────────────────┐
+  │                   Nginx  :80                         │
+  │                                                     │
+  │  /           → frontend 靜態檔案                    │
+  │  /ws         → terminal-gateway :3001  (WebSocket)  │
+  │  /api/       → scoreboard-api :8000                 │
+  │  /api/rooms/ → room-manager :4000                   │
+  │  /api/lab/   → lab-api :4100                        │
+  │  /api/lab/runs/:id/stream → lab-api (WebSocket)     │
+  └───┬──────┬──────┬──────┬──────┬────────────────────┘
+      │      │      │      │      │
+      ▼      ▼      ▼      ▼      ▼
+  ┌───────┐ ┌────┐ ┌────────┐ ┌─────────┐ ┌──────────┐
+  │term-  │ │scr-│ │ room-  │ │ lab-api │ │  falco   │
+  │gateway│ │api │ │manager │ │  :4100  │ │(syscall) │
+  │ :3001 │ │:8000│ │ :4000  │ │         │ │          │
+  └───┬───┘ └────┘ └───┬────┘ └────┬────┘ └────┬─────┘
+      │                │            │           │
+      │docker exec      │docker.sock │exec+stats │webhook
+      │                │            │           │
+      ▼                ▼            ▼           ▼
+  ┌───────────────────────────────────────────────────┐
+  │              Docker Engine                         │
+  │                                                   │
+  │  room0  room1  room2  room3  room4  room5          │
+  │  room6  room7  room8  room9  room10 room11         │
+  │  final  secret-a  secret-b                        │
+  │  locked-server  secret-server  vault               │
+  │  ghost-alpha/beta/gamma/delta                      │
+  └───────────────────────────────────────────────────┘
 ```
 
-### 2.2 服務清單
+### 2.2 管理服務清單
 
-| 服務 | 技術 | 說明 |
+| 服務 | 技術棧 | 內部 Port | 職責 |
+|-----|--------|---------|------|
+| **nginx** | Nginx Alpine | 80 | 統一入口、反向代理、靜態檔案服務 |
+| **terminal-gateway** | Node.js + ws + node-pty | 3001 | WebSocket ↔ docker exec PTY 橋接 |
+| **scoreboard-api** | FastAPI + SQLite | 8000 | FLAG 驗證、排行榜、成就、提示 |
+| **room-manager** | Node.js + dockerode | 4000 | 動態容器生命週期管理（按需啟停） |
+| **lab-api** | Node.js + Express | 4100 | 攻擊腳本執行引擎、Falco 告警收集、分析 API |
+| **falco** | falco-no-driver（privileged） | — | 容器行為監控（syscall / eBPF 層） |
+
+### 2.3 Docker 網路拓撲
+
+```
+game_net  172.20.0.0/24
+  └─ 所有服務與房間容器（共用主幹網路）
+
+docker_net  172.21.0.0/24
+  └─ room6/7/8/final + vault + ghost-alpha/beta/gamma/delta
+     （有 docker.sock 存取需求的 Docker 進階場景）
+
+secret_net  172.22.0.0/24  [internal: true]
+  └─ room9 + secret-server
+     （完全隔離，禁止外網連線；Room 9 橫向移動謎題核心）
+
+ssh_net  172.23.0.0/24
+  └─ room4 + locked-server
+     （SSH 金鑰跳板練習的專屬網路）
+```
+
+| 網路 | Subnet | internal | 用途 |
+|------|--------|---------|------|
+| game_net | 172.20.0.0/24 | 否 | 所有服務主幹 |
+| docker_net | 172.21.0.0/24 | 否 | Docker 進階容器 |
+| secret_net | 172.22.0.0/24 | **是** | Room 9 隔離謎題 |
+| ssh_net | 172.23.0.0/24 | 否 | Room 4 SSH 跳板 |
+
+### 2.4 Nginx 路由規則
+
+| 路徑 | Upstream | 協定 | 說明 |
+|------|----------|------|------|
+| `/` | 前端靜態 | HTTP | index.html / map.html 等 |
+| `/ws` | terminal-gateway:3001 | **WebSocket** | xterm.js 終端機 |
+| `/api/` | scoreboard-api:8000 | HTTP | FLAG / 排行榜 / 成就 |
+| `/api/rooms/status` | room-manager:4000 | HTTP | 房間狀態查詢 |
+| `/api/rooms/(.+)` | room-manager:4000/rooms/$1 | HTTP | ensure / heartbeat / release / reset |
+| `/api/lab/runs/:id/stream` | lab-api:4100 | **WebSocket** | 攻擊步驟即時串流 |
+| `/api/lab/` | lab-api:4100 | HTTP | 場景 / 執行紀錄 / 分析 |
+
+---
+
+## 3. Security Lab 核心模組
+
+### 3.1 Lab 執行管線架構
+
+```
+使用者點擊「執行場景」
+       │
+       ▼
+POST /api/lab/runs  (lab-api)
+       │
+       ├─ POST /rooms/:id/reset  → room-manager（確保容器乾淨）
+       │
+       ├─ 設定 Falco tier（basic / full）
+       │       → 套用對應規則檔，重新掛載 Falco
+       │
+       ├─ 執行攻擊腳本
+       │       → docker exec -u player <container> bash exploits/<id>.sh
+       │
+       │  ┌── 即時事件（JSON Lines） ──┐
+       │  │  step / result / error   │
+       │  └──────────────────────────┘
+       │                │
+       │   WebSocket /api/lab/runs/:id/stream
+       │                │
+       │             瀏覽器（run.html）
+       │
+       ├─ 接收 Falco 告警
+       │       → POST /api/lab/falco-webhook（Falco 主動推送）
+       │       → 記錄：規則名、嚴重性、時間戳
+       │
+       └─ 完成後 POST /rooms/:id/reset（恢復容器初始狀態）
+```
+
+### 3.2 攻擊腳本設計
+
+**腳本位置**：`lab/exploits/<scenario_id>.sh`（15 支），共用函式庫 `lab/exploits/lib/common.sh`
+
+**輸出格式**（JSON Lines，每行一個事件）：
+
+```json
+{"type":"step","name":"找尋 FLAG 所在路徑","output":"find /home -name '*.encoded'","exit_code":0,"duration_ms":312}
+{"type":"step","name":"Base64 解碼","output":"EscapeDocker{a3f8c1d2e4b7f9a0}","exit_code":0,"duration_ms":28}
+{"type":"result","status":"success","flag_found":"EscapeDocker{a3f8c1d2e4b7f9a0}","final_privilege":"player","duration_ms":2341}
+```
+
+**特殊功能**：room6 啟用 `step_traced()`，記錄 strace ground truth（execve / openat / connect syscall），作為 Falco 偵測的地面真相對照。
+
+**執行結果欄位**：
+
+| 欄位 | 說明 |
+|------|------|
+| `status` | success / failed / timeout |
+| `flag_found` | 取得的 FLAG 字串或 null |
+| `final_privilege` | player / root / docker-daemon |
+| `duration_ms` | 總執行時間 |
+
+### 3.3 Falco 規則層級
+
+系統提供兩個規則 Tier，可在儀表板即時切換：
+
+| Tier | 規則數 | 策略 | 適用場景 |
+|------|--------|------|---------|
+| **Basic** | 8 條 | 高信度、低誤報 | 邊緣設備長期部署 |
+| **Full** | 31 條 | 廣覆蓋、誤報較高 | 安全審計、完整評估 |
+
+**Basic Tier 主要覆蓋範圍**：sudo 執行、docker.sock 存取、cron 派生行程、SUID 二進位執行
+
+**Full Tier 額外規則**：find 遞迴掃描、base64 解碼、SSH pattern、proc/sys 存取等
+
+### 3.4 前端介面
+
+**Lab 模組共 3 個頁面**（位於 `frontend/lab/`）：
+
+#### 實驗控制台（`lab/index.html`）
+
+- **場景卡片網格**：15 張卡片，各顯示場景 ID、攻擊類型 badge、上次執行的偵測率/覆蓋率/誤報率
+- **狀態點**：綠（已偵測）/ 灰（未執行）/ 紅（未偵測）
+- **Tier 切換橫條**：Basic / Full 即時切換
+- **批次操作**：一鍵執行全部場景、全部 Baseline（15×20秒靜置）
+- **執行歷史**：最近 30 筆紀錄（場景、類型、狀態、FLAG 取得、耗時）
+
+#### 即時檢視（`lab/run.html`）
+
+- **左側：步驟面板** — 每個 step 卡片顯示指令、輸出、exit code、耗時
+  - Pilot 功能：room6 顯示 strace ground truth（execve / openat / connect）
+- **右側：Falco 告警 Feed** — 即時 prepend，顯示規則名、嚴重性（彩色邊框）、時間戳
+
+#### 分析儀表板（`lab/analytics.html`）
+
+- **Tab**：All / Full / Basic / Tier 對比
+- **摘要卡片**：執行次數、偵測率、規則覆蓋率、誤報率
+- **圖表（RQ2）**：規則覆蓋率 vs 誤報率棒圖、偵測延遲分布圖、覆蓋率×誤報率散佈圖
+- **圖表（Tier 對比）**：Basic vs Full 覆蓋率對比、誤報率對比、每日告警傳輸量估算
+- **資源開銷表格（RQ3）**：Falco / lab-api / room-manager 的 CPU / 記憶體快照
+
+### 3.5 Lab-API 端點清單
+
+| 方法 | 路徑 | 功能 |
 |------|------|------|
-| `nginx` | Nginx Alpine | 反向代理，統一入口 port 80 |
-| `terminal-gateway` | Node.js + node-pty | WebSocket ↔ docker exec 橋接 |
-| `scoreboard-api` | FastAPI + SQLite | FLAG 驗證、排行榜、成就、提示 |
-| `room0` ~ `room11` | Ubuntu 22.04 | 12 個主關謎題容器 |
-| `final` | Ubuntu 22.04 | Final Boss 容器 |
-| `secret-a`, `secret-b` | Ubuntu 22.04 | 2 個隱藏關容器 |
-| `locked-server` | Ubuntu 22.04 | Room 4 SSH 目標伺服器 |
-| `secret-server` | Python Flask | Room 9 內部隔離 API |
-| `vault` | Alpine | 存放最終 FLAG |
-| `ghost-alpha/beta/gamma` | Alpine/Ubuntu | Room 6 停止容器謎題 |
-
-### 2.3 網路拓撲
-
-```
-game_net (172.20.0.0/24)      ← 所有 room 容器與 nginx/API
-docker_net (172.21.0.0/24)    ← 有 Docker 存取需求的 room
-secret_net (172.22.0.0/24)    ← 隔離內網，internal: true（Room 9 謎題）
-ssh_net (172.23.0.0/24)       ← locked-server（Room 4 SSH 謎題）
-```
+| GET | `/api/lab/scenarios` | 列出 15 個場景中繼資料 |
+| GET | `/api/lab/scenarios/:id` | 單一場景完整細節 |
+| POST | `/api/lab/runs` | 啟動一次攻擊實驗（非同步） |
+| POST | `/api/lab/baseline-runs` | 啟動 20 秒 Baseline（靜置誤報量測） |
+| GET | `/api/lab/runs` | 歷史執行清單 |
+| GET | `/api/lab/runs/:id` | 單次執行詳情 |
+| GET (WS) | `/api/lab/runs/:id/stream` | 即時串流（step / alert / result） |
+| POST | `/api/lab/falco-webhook` | Falco 告警接收端點（由 Falco 主動推送） |
+| GET | `/api/lab/analytics/detection-matrix` | 15 場景彙整：覆蓋率、延遲、誤報率 |
+| GET | `/api/lab/analytics/resource-usage` | docker stats 快照 |
+| POST | `/api/lab/falco-tier` | 切換 Falco 規則 Tier |
 
 ---
 
-## 3. 技術選型與理由
+## 4. 攻擊場景設計（RQ1）
 
-### 3.1 Web 終端機：xterm.js + node-pty
+### 4.1 風險分級框架
 
-玩家不需要安裝任何 CLI 工具，**直接用瀏覽器**就能操作真實的 Linux 終端機。
+依照**攻擊能力**與**潛在危害範圍**，將 15 個場景分為四個風險等級：
 
+| 等級 | 名稱 | 定義 | 代表危害 |
+|------|------|------|---------|
+| **T1** | 資訊洩漏 | 不需提權，直接讀取洩漏的機密 | 配置錯誤導致明文 FLAG / token 可讀 |
+| **T2** | 容器內提權 | 利用容器內的錯誤配置取得 root | SUID 誤設、sudo 設定不當 |
+| **T3** | 橫向移動 | 從一個容器移動到另一個容器或網段 | SSH 跳板、內網穿透 |
+| **T4** | Host 等級控制 | 透過 docker.sock 控制 Docker daemon | 等同取得主機 root 權限 |
+
+### 4.2 場景總覽
+
+| 場景 | 房間名稱 | 等級 | 攻擊類型 | 錯誤配置描述 |
+|------|---------|------|---------|------------|
+| room0 | Tutorial | T1 | 資訊洩漏 | FLAG 明文寫在 /etc/motd |
+| room1 | The Archive | T1 | 弱混淆 | 僅 base64 編碼，混在大量假檔案中 |
+| room2 | The Vault | T2 | sudo 引數注入 | sudo NOPASSWD 腳本缺少引數引號保護 |
+| room3 | The Process | T1 | 行程信號 | FLAG daemon 透過 SIGUSR1 觸發輸出 |
+| room4 | The Locksmith | T3 | SSH 跳板 | locked-server 共享 volume 可植入 authorized_keys |
+| room5 | The Wire | T1 | 服務探測 | FLAG 服務監聽特定 port，需謎語驗證 |
+| room6 | The Shipyard | T4 | docker.sock (唯讀) | 唯讀 socket 仍可對 API 呼叫取得跨容器機密 |
+| room7 | The Workshop | T4 | docker.sock (可寫) | 可寫 socket 可執行任意容器操作 |
+| room8 | The Fleet | T1 | Compose 設定缺陷 | docker-compose.yml 缺少必要環境變數 |
+| room9 | Network Maze | T3 | 網路隔離突破 | 手動 docker network connect 進入 internal 網路 |
+| room10 | The Evidence | T1 | 日誌洩漏 | session token 以明文寫入 app.log |
+| room11 | The Clockwork | T2 | Cron 注入 | root cron job 讀取玩家可寫的 key 檔案 |
+| final | The Escape | T4 | docker.sock RCE | 完整 Docker REST API 控制，存取 vault 容器取得 FLAG |
+| secret-a | The Leak | T1 | ENV 變數洩漏 | LEAKED_SECRET 透過 docker inspect 可見 |
+| secret-b | The Ghost | T4 | Image layer 挖掘 | 已刪除的 FLAG 仍存在於舊 image layer |
+
+### 4.3 代表性場景詳細說明
+
+#### T1 代表：room10 — 應用層日誌洩漏（Falco 結構性盲區）
+
+**錯誤配置**：應用程式將 session token（即 FLAG）以明文格式記錄至 `app.log`，屬於開發階段「方便除錯」遺留的記錄習慣。
+
+**攻擊流程**：
+1. 分析 `auth.log`，找出 SSH 暴力攻擊的來源 IP（`192.168.1.100`）
+2. 在 `nginx.log` 追蹤該 IP 存取了 `/api/v1/users/export`
+3. 對應到 `app.log` 中的 session token 記錄
+
+```bash
+grep "192.168.1.100" nginx.log | awk '{print $7}' | sort -u
+grep "session token" app.log
 ```
-瀏覽器 xterm.js  ←─ WebSocket ─→  terminal-gateway (Node.js)
-                                         │
-                                    node-pty.spawn(
-                                      'docker', ['exec', '-it', room, 'bash']
-                                    )
-                                         │
-                                    真實的 Ubuntu 容器 shell
-```
 
-- **xterm.js**：成熟的瀏覽器端終端機模擬器，支援 256 色、Terminal resize
-- **node-pty**：以偽終端機（PTY）啟動 `docker exec`，完整支援互動式程式（vim、top 等）
+**Falco 偵測結果**：**規則覆蓋率 = null（結構性盲區）**  
+原因：整個攻擊過程僅涉及 `cat` / `grep` 等正常檔案讀取操作，Falco 監控的 syscall 模式與日常使用無異，無法區分「正常讀 log」與「攻擊者讀 log」。
 
-### 3.2 API 後端：FastAPI
-
-- 自動產生 OpenAPI 文件（`/api/docs`）
-- Pydantic 模型驗證輸入
-- 非同步處理，效能佳
-
-### 3.3 動態 FLAG 系統
-
-FLAG 不寫死，根據 `.env` 的 `FLAG_SEED` 動態生成，防止抄答案：
-
-```python
-# scoreboard-api/flags.py
-def _gen(suffix: str) -> str:
-    raw = hashlib.sha256(f"{_SEED}-{suffix}".encode()).hexdigest()[:16]
-    return f"EscapeDocker{{{raw}}}"
-
-# 範例
-_gen("room1")  →  "EscapeDocker{a3f8c1d2e4b7f9a0}"
-```
-
-更換 `FLAG_SEED` 即可重新生成所有 15 個 FLAG，適合課堂多次使用。
+**結論**：Falco（syscall / eBPF 層）與 SIEM 日誌內容稽核互補，而非取代關係。
 
 ---
 
-## 4. 關卡設計
+#### T2 代表：room2 — Sudo 引數注入提權
 
-### 4.1 故事背景
-
-> 你是一名系統管理員，在凌晨三點收到一封匿名訊息：
-> 「我把所有機密分散藏在容器裡。找到它們，才能解開最終密碼。」
-> 每個容器都是一道謎題。時鐘正在滴答作響。
-
-### 4.2 關卡總覽
-
-| # | 關卡名稱 | 主題 | 核心指令 / 技術 | 分數 |
-|---|---------|------|----------------|------|
-| 0 | Tutorial | 系統初探 | `ls`, `cd`, `cat`, `man` | 50 |
-| 1 | The Archive | 檔案搜尋 | `find`, `base64 -d`, `strings` | 100 |
-| 2 | The Vault | 權限提升 | `sudo -l`, SUID, path injection | 100 |
-| 3 | The Process | 行程管理 | `ps aux`, `/proc`, `kill -USR1` | 150 |
-| 4 | The Locksmith | SSH 金鑰 | `ssh-keygen`, `authorized_keys`, SSH Tunnel | 150 |
-| 5 | The Wire | 網路診斷 | `ss -tlnp`, `nc`, `/etc/hosts` | 150 |
-| 6 | The Shipyard | Docker 基礎 | `docker ps -a`, `logs`, `inspect`, `diff` | 200 |
-| 7 | The Workshop | Docker Build | `Dockerfile`, `docker build`, image layers | 200 |
-| 8 | The Fleet | Docker Compose | `docker-compose.yml`, `depends_on`, healthcheck | 200 |
-| 9 | Network Maze | Docker 網路 | `docker network`, `internal`, DNS, `connect` | 200 |
-| 10 | The Evidence | 日誌分析 | `grep`, `awk`, `sed`, 多步驟 log 追蹤 | 250 |
-| 11 | The Clockwork | 自動化 | `crontab`, bash scripting, cron job | 250 |
-| F | **The Escape** | **Final Boss** | `docker.sock`, Docker REST API, `curl --unix-socket` | 500 |
-| S-A | The Leak | 隱藏關 A | `docker inspect`, ENV 變數洩漏 | 300 |
-| S-B | The Ghost | 隱藏關 B | `docker save`, image layer 挖掘, `tar` | 300 |
-
-### 4.3 關卡詳細說明
-
-#### Chapter 1：Linux 基礎（Room 0-2）
-
-**Room 1 — The Archive（檔案搜尋）**
-
-容器內有 80 個目錄、數百個假檔案作為干擾。FLAG 被 base64 編碼後藏在深層路徑 `/home/player/archive/dir_037/backups/2023/system_backup.encoded`。另外還有一個假 ELF binary，用 `strings` 可以找到提示訊息。
+**錯誤配置**：`/usr/local/bin/backup.sh` 以 sudo NOPASSWD 執行，但腳本參數未加引號：
 
 ```bash
-# 解題流程
-find /home -name "*.encoded"          # 找到目標檔案
-base64 -d system_backup.encoded       # 解碼取得 FLAG
-strings /home/player/binary_clue      # 進階：從 binary 找提示
+# backup.sh（有漏洞的版本）
+cp $1 /tmp/out   # $1 未加引號 → 路徑注入
 ```
 
-**Room 2 — The Vault（權限提升）**
-
-`/secret/flag.txt` 只有 root 可讀，但玩家有受限的 sudo 權限。`/usr/local/bin/backup.sh` 的內容是：
+**攻擊流程**：
 
 ```bash
-cp $1 /tmp/out   # 參數沒有引號 → path injection 漏洞
+sudo -l                                    # 發現 NOPASSWD: backup.sh
+sudo /usr/local/bin/backup.sh /secret/flag.txt
+cat /tmp/out                               # 讀到 root 擁有的 FLAG
 ```
 
-玩家必須發現這個路徑注入漏洞，執行 `sudo backup.sh /secret/flag.txt`，然後從 `/tmp/out` 讀取。
+**Falco 偵測**：規則覆蓋率 100%，觸發 `Sudo Privilege Escalation` 告警。
 
-#### Chapter 2：系統操作（Room 3-5）
+---
 
-**Room 3 — The Process（行程管理）**
+#### T3 代表：room4 — SSH 跳板 + Port Forwarding
 
-容器啟動時在背景執行一個 Python daemon，每 5 秒輸出 XOR 加密的 FLAG。但只有發送 SIGUSR1 才能讓它輸出明文。
+**錯誤配置**：room4 與 locked-server 共享 Docker volume（`locked_server_ssh`），掛載為 locked-server 的 `~/.ssh/`，玩家可直接寫入 `authorized_keys`。
+
+**攻擊流程**：
 
 ```bash
-ps aux | grep flag_daemon     # 找到 PID
-kill -USR1 <PID>              # 觸發 FLAG 輸出
-cat /proc/<PID>/cmdline       # 進階：讀取 cmdline
+ssh-keygen -t ed25519 -f /tmp/mykey -N ""
+cat /tmp/mykey.pub >> /home/player/locked-server-ssh/authorized_keys
+
+# SSH 連線（public key 已被植入）
+ssh -i /tmp/mykey player@locked-server -L 9090:localhost:9090 &
+
+# 透過 SSH Tunnel 存取 FLAG 服務
+curl http://localhost:9090/flag
 ```
 
-**Room 4 — The Locksmith（SSH 金鑰）**
+**Falco 偵測**：規則覆蓋率 87.5%，觸發 `SSH Key-Based Lateral Movement` 相關告警。
 
-容器內有個 `locked-server`（另一個 Ubuntu 容器），只允許公鑰認證，密碼登入已停用。FLAG 在 `locked-server` 的 `localhost:9090`，玩家必須：
-1. 生成 SSH key pair
-2. 把公鑰加入 locked-server 的 `authorized_keys`
-3. 建立 SSH Tunnel（`-L 9090:localhost:9090`）
-4. 透過 Tunnel 用 curl 取得 FLAG
+---
 
-#### Chapter 3：Docker 核心（Room 6-9）
+#### T4 代表：room6 — 唯讀 docker.sock 仍可 RCE
 
-**Room 6 — The Shipyard（Docker 基礎）**
+**錯誤配置**：容器掛載 `/var/run/docker.sock`（唯讀），開發者以為唯讀就安全。
 
-三個已停止的容器（`ghost-alpha`, `ghost-beta`, `ghost-gamma`），各藏著不同資訊：
-
-| 容器 | 取得方式 | 資訊 |
-|------|---------|------|
-| ghost-alpha | `docker logs` | FLAG Part 1 在輸出中 |
-| ghost-beta | `docker inspect` | SECRET 在環境變數裡 |
-| ghost-gamma | `docker start` + `exec` | 檔案在 `/app/secret/fragment.txt` |
-
-**Room 9 — Network Maze（Docker 網路隔離）**
-
-`secret-server.internal` 在 `secret_net`（`internal: true` 隔離網路），room9 容器一開始無法連線。玩家需要：
+**攻擊流程**：
 
 ```bash
-docker network ls                    # 找到 escape-docker_secret_net
-docker network connect \
-  escape-docker_secret_net room9     # 把自己加入隔離網路
-curl -H 'X-Token: room9_player' \
-  http://secret-server.internal/secret  # 帶正確 Header 取得 FLAG
-```
+# 透過唯讀 socket 呼叫 Docker REST API
+curl --unix-socket /var/run/docker.sock http://localhost/containers/json
 
-**Final Boss — The Escape（docker.sock）**
-
-容器掛載了 `/var/run/docker.sock`，玩家可以透過 Docker REST API 控制整個 Docker daemon：
-
-```bash
-# 1. 確認 socket 存在
-ls -la /var/run/docker.sock
-
-# 2. 列出所有容器
+# 對其他容器（ghost-alpha/beta/gamma/delta）執行 logs / inspect / exec
 curl --unix-socket /var/run/docker.sock \
-  http://localhost/containers/json | python3 -m json.tool
-
-# 3. 找到 vault 容器 ID，建立 exec session
-curl -X POST --unix-socket /var/run/docker.sock \
-  -H "Content-Type: application/json" \
-  -d '{"AttachStdout":true,"Cmd":["cat","/final_flag.txt"]}' \
-  http://localhost/containers/<vault_id>/exec
-
-# 4. 執行取得 FLAG
-curl -X POST --unix-socket /var/run/docker.sock \
-  -H "Content-Type: application/json" \
-  -d '{"Detach":false}' \
-  http://localhost/exec/<exec_id>/start
+  "http://localhost/containers/ghost-delta/logs?stdout=true"
 ```
 
-完成後系統顯示「為什麼 docker.sock 是嚴重安全漏洞」的教學說明。
+**核心發現**：唯讀掛載只限制 socket 的 POSIX 寫入，但 Docker API 本身是無狀態的 HTTP，`docker exec`、`docker logs`、`docker inspect` 等操作的語義「讀取」能力完全保留。
 
-#### 隱藏關卡
-
-**Secret Room A — The Leak**：解鎖條件是完成 Room 6 後觀察 `secret-a` 容器的環境變數，發現 `LEAKED_SECRET` 被故意暴露（對應 ENV 安全最佳實踐）。
-
-**Secret Room B — The Ghost**：解鎖條件是完成 Room 7 後從 `secret-b` 的 image history 發現痕跡。在某個 build layer 寫入 FLAG 後再刪除，但透過 `docker save` + `tar` 仍可從舊 layer 找到已刪除的檔案。
+**Falco 偵測**：規則覆蓋率 91.7%。
 
 ---
 
-## 5. 核心功能實作
+## 5. 實驗設計與結果
 
-### 5.1 計分系統
+### 5.1 RQ2：Falco 偵測有效性
+
+#### 實驗方法
+
+- **攻擊實驗**：對每個場景自動執行攻擊腳本，收集 Falco 告警
+- **Baseline 實驗**：容器啟動後靜置 20 秒，量測無攻擊時的背景告警率（誤報基準）
+- **Falco Webhook**：Falco 主動推送告警至 lab-api，精確計算「偵測延遲 = 第一筆相關告警時間 − 攻擊開始時間」
+
+#### 量測指標定義
+
+| 指標 | 定義 |
+|------|------|
+| **規則覆蓋率** | 場景設計的 Falco 規則中，實際觸發的比例 |
+| **偵測延遲** | 攻擊開始到第一筆相關告警的時間差（毫秒） |
+| **誤報率** | Baseline 期間觸發的「高頻背景告警」佔所有告警的比例 |
+
+#### 結果摘要（Full Tier）
+
+| 場景 | 等級 | 覆蓋率 | 延遲（ms） | 誤報率 |
+|------|------|--------|----------|--------|
+| room0 | T1 | 83.3% | 450 | 高 |
+| room1 | T1 | 83.3% | 312 | 中 |
+| room2 | T2 | 100% | 180 | 低 |
+| room3 | T1 | 83.3% | 723 | 中 |
+| room4 | T3 | 87.5% | 1203 | 低 |
+| room5 | T1 | 83.3% | 544 | 中 |
+| room6 | T4 | 91.7% | 44 | 低 |
+| room7 | T4 | 91.7% | 89 | 低 |
+| room8 | T1 | 33.3% | 5943 | 低 |
+| room9 | T3 | 87.5% | 2100 | 低 |
+| room10 | T1 | **null** | — | **null** |
+| room11 | T2 | 100% | 390 | 中 |
+| final | T4 | 91.7% | 67 | 低 |
+| secret-a | T1 | 83.3% | 812 | 中 |
+| secret-b | T4 | 91.7% | 134 | 低 |
+| **平均** | — | **88.7%** | **1,770 ms** | **26.8%** |
+
+#### 各等級偵測效能
+
+| 等級 | 平均覆蓋率 | 說明 |
+|------|----------|------|
+| T1 | 83.3% | room10 為 null（應用層盲區），拉低均值 |
+| T2 | 100% | Sudo / Cron 有成熟規則，覆蓋完整 |
+| T3 | 87.5% | SSH 跳板 + 網路操作均可偵測 |
+| T4 | 91.7% | docker.sock 操作是 Falco 強項 |
+
+#### 關鍵負面發現
+
+**1. room10：應用層日誌洩漏是 Falco 的結構性盲區**
+
+攻擊過程完全依賴 `cat` / `grep` 等正常讀檔操作，syscall 特徵與日常使用無異。Falco 無法區分「攻擊者讀取機密日誌」與「管理員查看系統日誌」。此類威脅需搭配 SIEM（日誌內容稽核）方能偵測。
+
+**2. room8：修復型場景覆蓋率最低（33.3%）**
+
+場景需要玩家補全 docker-compose.yml 後才能取得 FLAG，補全後的 HTTP 請求走正常端口，不觸發網路異常規則；容器啟動路徑與規則 condition 不符，僅 1/3 規則觸發。
+
+**3. proc.name 類規則的脆弱性**
+
+Falco 規則若以工具名稱判斷（`proc.name = base64`、`proc.name = find`），可被替換工具繞過：
+
+```bash
+# 被規則偵測：
+base64 -d secret.encoded
+
+# 繞過規則（等效功能）：
+openssl base64 -d < secret.encoded
+python3 -c "import base64,sys; print(base64.b64decode(open('secret.encoded').read()))"
+```
+
+**結論**：應以「實際 syscall 參數特徵」（`fd.name`、`fd.sip/sport`）設計規則，而非僅依工具名稱。
+
+**4. 高頻背景誤報來源**
+
+在 terminal-gateway session 活躍期間，以下規則在 Baseline（無攻擊）期間持續觸發：
+
+- `Baseline Read Of Motd Or Hint File`（room0 容器系統提示讀取）
+- `DAC Read Search Capability Used`（room2/3 等容器的 capability 正常使用）
+- `Unexpected Child Process In Container Via Docker Exec`（terminal-gateway exec 背景行為）
+- `Cron Spawned Root Process`（room11 正常排程）
+
+這些規則的設計假設「此行為 = 攻擊」，但在本平台的正常營運環境下持續成立，是誤報率偏高（26.8%）的主要來源。
+
+---
+
+### 5.2 RQ3：邊緣資源成本
+
+#### 穩態資源開銷
+
+| 服務 | CPU（%） | 記憶體 |
+|------|---------|--------|
+| escape-falco | 1.22% ~ 8.53% | 73.91 ~ 91.84 MiB |
+| lab-api | 4.04% | 49.95 MiB |
+| room-manager | 0% | 33.46 MiB |
+
+Falco 在穩態時的 CPU 與記憶體開銷相對於邊緣節點（4 GB RAM）屬於可接受範圍（< 10%）。
+
+#### 告警積壓 OOM-kill 事故
+
+在執行「15 場景 × 2 次 Baseline」的完整測試後，發生系統性 OOM-kill 事件：
+
+**症狀**：所有 20 個遊戲容器（15 房間 + 5 附屬容器）被 Linux OOM-killer 以 SIGKILL 強制終止。
+
+**根本原因分析**：
+
+1. **日誌積壓主因**：Falco 在 7 小時連續運行中累積 **14 萬+ 行日誌**，其中 room6 ground-truth pilot 產生 **121,525 筆 `Ptrace Attach` 告警**，形成約 37 分鐘的告警佇列積壓
+
+2. **疊加效應**：15×2 Baseline 的背景告警持續湧入，與積壓佇列疊加，記憶體佔用持續攀升
+
+3. **重啟副作用**：Falco 因記憶體壓力重啟，eBPF probe reattach 與 container enrichment 重建產生瞬時資源尖峰，觸發 OOM 惡性循環
+
+**教訓**：邊緣設備的部署成本不只是「穩態 CPU / RAM」——告警積壓管線的**瞬時尖峰**與**偵測器重啟的副作用**同樣必須納入規劃。建議：
+- 設定 Falco 告警速率限制（rate limiting）
+- 定期輪替日誌（logrotate）
+- 評估 Basic Tier 替代 Full Tier 以降低告警量
+
+#### 告警傳輸量估算（每日 MB）
+
+假設每筆告警 350 bytes，以 10 個房間容器為例：
+
+| Tier | 每小時告警數（估） | 每日傳輸量 |
+|------|----------------|----------|
+| Basic（8 規則） | ~120 | ~1.0 MB |
+| Full（31 規則） | ~620 | ~5.2 MB |
+
+選擇 Basic Tier 每日可節省約 **4.2 MB** 傳輸量，在頻寬受限的邊緣場景具實際意義。
+
+---
+
+## 6. room-manager 動態排程
+
+### 6.1 設計動機
+
+傳統做法是 `docker compose up -d` 後讓全部 20+ 個容器常駐，但在邊緣環境中：
+
+- 大多數時間只有 1–2 個玩家在線
+- 每個閒置容器仍佔用 10–30 MB 記憶體
+- 同時啟動 20+ 容器增加 Demo 前的複雜度
+
+room-manager 實作「按需啟動、閒置停止、長時間重置」的生命週期管理，直接呼應課程的**邊緣運算資源排程**主題。
+
+### 6.2 實作架構
 
 ```
-基礎分數（FLAG 提交得分）
-  + 提示懲罰（使用提示會扣分）
-  + 成就加成（完成特定條件）
-  = 最終分數
+room-manager/
+  index.js            ← 主程序，初始化 + 啟動 idle-sweeper
+  lib/
+    app.js            ← Express REST API
+    docker.js         ← Docker 操作層（dockerode + docker compose CLI）
+    state.js          ← 房間狀態管理（running / stopped / starting）
+    idle-sweeper.js   ← 背景掃描器（每 60 秒）
+  rooms-config.json   ← 房間 → 容器群組映射
 ```
 
-**提示系統（3 個等級）：**
+**rooms-config.json** 定義每個房間對應的容器群組（含連動容器）：
+
+```json
+{
+  "room0":  { "containers": ["room0"] },
+  "room4":  { "containers": ["room4", "locked-server"] },
+  "room9":  { "containers": ["room9", "secret-server"] }
+}
+```
+
+**idle-sweeper 邏輯**（每 60 秒執行一次）：
+
+```
+掃描所有房間：
+
+  state = running & 無活躍連線 & 閒置 > ROOM_STOP_IDLE_MINUTES（預設 10 分鐘）
+    → docker stop <containers>
+    → state = stopped（保留容器層，下次 docker start 秒開）
+
+  state = stopped & 閒置 > ROOM_RESET_IDLE_MINUTES（預設 60 分鐘）
+    → docker compose up -d --force-recreate <containers>
+    → state = running（entrypoint.sh 重跑，FLAG 重新生成，環境乾淨）
+    → 立刻 docker stop（回到 stopped 待命狀態）
+```
+
+### 6.3 API 設計
+
+| 方法 | 路徑 | 說明 |
+|------|------|------|
+| GET | `/status` | 所有房間狀態（running / stopped / starting）+ 連線數 + 最後活動時間 |
+| POST | `/rooms/:id/ensure` | 確保容器為 running（若 stopped 則啟動，最多等 30 秒） |
+| POST | `/rooms/:id/heartbeat` | 更新 lastActivity 時間戳（每 30 秒由 terminal-gateway 呼叫） |
+| POST | `/rooms/:id/release` | 玩家離開，減少連線計數 |
+| POST | `/rooms/:id/reset` | 強制重置（需 X-Admin-Token），立刻 force-recreate |
+
+### 6.4 資源節省實驗
+
+**實驗設計**（`experiments/` 目錄）：
+
+- **Baseline 模式**：17 個房間容器全部常駐，記錄 5 分鐘
+- **Dynamic 模式**：room-manager 動態啟停，記錄 10 分鐘（含中途喚醒一個房間）
+- 工具：`monitor_resources.py`（定期 `docker stats`）+ `plot_resources.py`（繪圖）
+
+**實驗結果**（`experiments/resource_comparison.png`）：
+
+| 指標 | Baseline（常駐） | Dynamic（按需） | 節省 |
+|------|---------------|--------------|------|
+| 平均運行容器數 | 17.0 | 3.2 | **81.2%** |
+| 平均總記憶體 | 57.18 MB | 8.51 MB | **85.1%** |
+| 平均總 CPU | 0.069% | 0.008% | **88.1%** |
+| 停止時記憶體 | — | 0.00 MB | 完全釋放 |
+
+**冷啟動延遲**：停止狀態的容器重新啟動（`docker start`）延遲 < 1 秒，玩家體驗上幾乎無感。完全重置（`--force-recreate`）需 5–10 秒。
+
+---
+
+## 7. Story Mode：互動式密室逃脫
+
+### 7.1 設計定位
+
+Story Mode 以**互動式密室逃脫遊戲**的形式，讓玩家直接在瀏覽器的 xterm.js 終端機中操作真實的 Linux / Docker 環境。15 個關卡完全對應 Security Lab 的 15 個攻擊場景，是「先讓人自己體驗漏洞，再看自動化分析結果」的教學設計。
+
+### 7.2 關卡總覽
+
+| # | 關卡名稱 | 章節 | 核心技術 | 分數 | 解鎖條件 |
+|---|---------|------|---------|------|---------|
+| 0 | Tutorial | 初探系統 | `ls` `cd` `cat` `man` | 50 | — |
+| 1 | The Archive | 檔案搜尋 | `find` `base64` `strings` | 100 | 完成 Room 0 |
+| 2 | The Vault | 權限提升 | `sudo -l` SUID path injection | 100 | 完成 Room 1 |
+| 3 | The Process | 行程管理 | `ps aux` `/proc` `kill -USR1` | 150 | 完成 Room 2 |
+| 4 | The Locksmith | SSH 金鑰 | `ssh-keygen` `authorized_keys` SSH Tunnel | 150 | 完成 Room 3 |
+| 5 | The Wire | 網路診斷 | `ss -tlnp` `nc` `/etc/hosts` | 150 | 完成 Room 4 |
+| 6 | The Shipyard | Docker 基礎 | `docker logs/inspect/exec` | 200 | 完成 Room 5 |
+| 7 | The Workshop | Docker Build | `Dockerfile` `docker build` image layers | 200 | 完成 Room 6 |
+| 8 | The Fleet | Docker Compose | `docker-compose.yml` healthcheck | 200 | 完成 Room 7 |
+| 9 | Network Maze | Docker 網路 | `docker network connect` internal DNS | 200 | 完成 Room 8 |
+| 10 | The Evidence | 日誌分析 | `grep` `awk` `sed` 多步驟追蹤 | 250 | 完成 Room 9 |
+| 11 | The Clockwork | 自動化 | `crontab` bash scripting | 250 | 完成 Room 10 |
+| F | **The Escape** | **Final Boss** | `docker.sock` Docker REST API | 500 | 完成 Room 11 |
+| S-A | The Leak | 隱藏關 A | `docker inspect` ENV 洩漏 | 300 | 完成 Room 6 |
+| S-B | The Ghost | 隱藏關 B | `docker save` image layer 挖掘 | 300 | 完成 Room 7 |
+
+**總分上限**：基礎分數 2,950 pts + 成就加成 3,350 pts = **6,300+ pts**
+
+### 7.3 計分與成就系統
+
+**提示系統（三級制）**：
 
 | 等級 | 費用 | 內容 |
 |------|------|------|
-| Level 1 | 免費 | 方向提示（「試試 find 指令」）|
-| Level 2 | -25 pts | 具體步驟（「用 find -name '*.encoded'」）|
-| Level 3 | -50 pts | 完整解法（直接給出指令）|
+| Level 1 | 免費 | 方向提示（「試試 find 指令」） |
+| Level 2 | -25 pts | 具體步驟 |
+| Level 3 | -50 pts | 完整解法指令 |
 
-### 5.2 成就系統（10 個）
+**成就系統（10 個）**：
 
 | 成就 | 圖示 | 條件 | 加分 |
 |------|------|------|------|
 | Speed Demon | ⚡ | 任一關 3 分鐘內完成 | +100 |
-| Pure Chapter 1 | 🧠 | Chapter 1 全部不用提示 | +150 |
+| Pure Chapter 1 | 🧠 | Room 0-2 全部不用提示 | +150 |
 | No Crutches | 💪 | 所有主關不用提示 | +500 |
-| First Blood | 🩸 | 第一個完成某關卡 | +200 |
+| First Blood | 🩸 | 第一個完成任一關卡 | +200 |
 | All Clear | 🏆 | 完成全部 12 個主關 | +500 |
 | Ghost Hunter | 👻 | 找到兩個 Secret Room | +300 |
-| Completionist | 🌟 | 100% 完成率（含隱藏關）| +1000 |
-| Docker Master | 🐳 | 完成 Chapter 3 全部 | +300 |
+| Completionist | 🌟 | 100% 完成（含 Secret） | +1,000 |
+| Docker Master | 🐳 | 完成全部 Chapter 3（Room 6-9） | +300 |
 | Escape Artist | 🔓 | 完成 Final Boss | +200 |
 | Log Detective | 🔍 | 完成 Room 10 | +100 |
 
-**成就加成最高 +2,600 pts，理論總分上限 3,500+ pts。**
+### 7.4 動態 FLAG 系統
 
-### 5.3 API 端點
+FLAG 不寫死，在容器啟動時由 `FLAG_SEED` 動態生成，scoreboard-api 使用相同演算法驗證，無需跨容器通訊：
 
+```python
+# scoreboard-api/flags.py
+def _gen(suffix: str) -> str:
+    raw = hashlib.sha256(f"{FLAG_SEED}-{suffix}".encode()).hexdigest()[:16]
+    return f"EscapeDocker{{{raw}}}"
+
+# 範例
+_gen("room6")  →  "EscapeDocker{3a7f2b9c1d4e8f0a}"
 ```
-POST /register              ← 玩家註冊（輸入名字）
-POST /submit                ← 提交 FLAG
-GET  /scoreboard            ← 即時排行榜
-GET  /player/{name}         ← 個人進度 + 解鎖狀態
-GET  /rooms                 ← 所有房間元資料
-POST /hint                  ← 請求提示（記錄並扣分）
-GET  /hints/{room_id}       ← 提示等級與費用資訊
-POST /enter                 ← 記錄進入房間時間（計時用）
-GET  /achievements          ← 成就清單
-GET  /admin/dashboard       ← 管理員總覽（需 X-Admin-Token）
-GET  /admin/flags-info      ← 所有 FLAG 答案（管理員用）
-```
-
-### 5.4 前端頁面
-
-| 頁面 | 功能 |
-|------|------|
-| `index.html` | 故事介紹、輸入玩家名字 |
-| `map.html` | 互動式房間地圖，顯示鎖定/解鎖/完成狀態 |
-| `play.html` | 主遊戲頁：xterm.js 終端機 + 任務說明 + 提示 + FLAG 提交 |
-| `scoreboard.html` | 即時排行榜（含成就加成分解）|
-| `achievements.html` | 成就牆（已解鎖/未解鎖）|
-| `admin.html` | 管理員面板（需輸入 Admin Token）|
-
-### 5.5 資料庫設計（SQLite）
-
-```sql
-players       (name, avatar, joined_at)
-submissions   (player_name, flag_id, room, points, submitted_at)
-hint_usage    (player_name, room_id, hint_level, cost, used_at)
-achievements  (player_name, achievement_id, earned_at)
-room_timings  (player_name, room_id, entered_at, completed_at)
-```
-
----
-
-## 6. Docker 容器設計
-
-### 6.1 Room 容器結構
-
-每個 room 容器都有相同的基本結構：
-
-```
-rooms/roomX/
-├── Dockerfile        ← Ubuntu 22.04 基底，安裝必要工具
-├── setup.sh          ← build 時執行：生成謎題、假檔案、motd
-├── entrypoint.sh     ← 容器啟動時執行：動態生成 FLAG、啟動背景服務
-└── (各關專屬檔案)
-```
-
-**動態 FLAG 生成（entrypoint.sh 的核心邏輯）：**
 
 ```bash
-FLAG=$(echo "${FLAG_SEED}-room1" | sha256sum | cut -c1-16)
+# 容器端 entrypoint.sh
+FLAG=$(echo -n "${FLAG_SEED}-room6" | sha256sum | cut -c1-16)
 echo "EscapeDocker{${FLAG}}" > /home/player/.hidden_flag
 ```
 
-FLAG 值在**容器啟動時**根據 `FLAG_SEED` 動態計算，與後端 API 使用同樣的演算法驗證，不需要在程式碼裡寫死任何 FLAG。
-
-### 6.2 網路隔離設計
-
-```yaml
-# docker-compose.yml 網路設定
-networks:
-  secret_net:
-    driver: bridge
-    internal: true          # ← 無法連上外網，也無法被外部主動連線
-    ipam:
-      config:
-        - subnet: 172.22.0.0/24
-```
-
-`internal: true` 使 `secret_net` 完全隔離，玩家必須透過 `docker network connect` 才能存取 `secret-server.internal`，這正是 Room 9 的謎題核心。
-
-### 6.3 docker.sock 的教學意義
-
-Final Boss 的容器掛載了 Docker socket：
-
-```yaml
-# docker-compose.yml
-final:
-  volumes:
-    - /var/run/docker.sock:/var/run/docker.sock
-```
-
-這讓玩家理解：**掛載 docker.sock 等同於給予 root 權限**，因為可以透過 Docker REST API 建立特權容器並掛載 host 根目錄。完成後系統顯示實際的安全建議（改用 rootless Docker 或 socket proxy）。
+更換 `FLAG_SEED` 即可重新生成全部 15 個 FLAG，適合課堂多次使用。
 
 ---
 
-## 7. 啟動與操作方式
+## 8. 核心技術實作
 
-### 7.1 系統需求
+### 8.1 WebSocket 終端機
 
-| 工具 | 版本需求 |
-|------|---------|
-| Docker Desktop | 4.0+ |
-| Docker Compose | v2.0+ |
-| 可用記憶體 | 4 GB+ |
-| 作業系統 | Windows / Linux / macOS |
+```mermaid
+sequenceDiagram
+    participant B as 瀏覽器
+    participant T as terminal-gateway
+    participant R as room-manager
+    participant D as Docker Engine
 
-### 7.2 啟動步驟
-
-**Windows（PowerShell）：**
-```powershell
-cd escape-docker
-Copy-Item .env.example .env   # 可修改 FLAG_SEED 和 ADMIN_TOKEN
-.\start.ps1                   # 一鍵啟動，第一次約 10-15 分鐘
+    B->>T: WebSocket 連線 (?room=room6)
+    T->>R: POST /rooms/room6/ensure
+    R->>D: docker start room6（若已停止）
+    R-->>T: {state: "running"}
+    T-->>B: {type: "ready"}
+    loop 每 30 秒
+        T->>R: POST /rooms/room6/heartbeat
+    end
+    B->>T: 輸入指令（原始字元）
+    T->>D: docker exec -it -u player room6 bash
+    D-->>B: PTY 輸出（256色終端）
+    B->>T: 關閉連線
+    T->>R: POST /rooms/room6/release
 ```
+
+**技術細節**：
+- `node-pty` 以 PTY 模式啟動 `docker exec -it`，支援 vim / top 等互動式程式
+- Terminal resize 事件（`{type: "resize", cols, rows}`）透過 WebSocket 即時同步
+- 心跳機制（30 秒）防止 room-manager idle-sweeper 錯誤停止有人使用的容器
+
+### 8.2 資料庫設計（SQLite）
+
+**位置**：`scoreboard-api/data/scores.db`（WAL 模式）
+
+```
+players (name PK, avatar, joined_at)
+  │
+  ├─ submissions (player_name, flag_id, room_id, points, submitted_at)
+  │    UNIQUE (player_name, flag_id)
+  │
+  ├─ hint_usage (player_name, room_id, hint_level, cost, used_at)
+  │
+  ├─ achievements (player_name, achievement_id, earned_at)
+  │    UNIQUE (player_name, achievement_id)
+  │
+  └─ room_timings (player_name, room_id, entered_at, completed_at)
+       UNIQUE (player_name, room_id)
+```
+
+**計分邏輯**：
+```
+最終分數 = base_score + achievement_bonus
+base_score = SUM(submissions.points) 扣除 SUM(hint_usage.cost)
+achievement_bonus = SUM(成就加分)
+```
+
+---
+
+## 9. 技術挑戰與解決方案
+
+### 9.1 Docker Build 並行超時
+
+**問題**：20+ 個 image 並行建置時，多個容器同時下載 apt/pip 套件，導致連鎖取消。
+
+**解決方案**：
+- `BUILDKIT_MAX_PARALLELISM=4` 限制同時建置數
+- Dockerfile 加入 apt 重試設定：
+  ```dockerfile
+  RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "120";\n' \
+      > /etc/apt/apt.conf.d/80-retries
+  ```
+- pip 加入超時與重試：`pip install --timeout 300 --retries 5`
+
+### 9.2 /etc/hosts 在 Build 階段唯讀
+
+**問題**：Room 5 的 `setup.sh` 在 build 階段嘗試寫入 `/etc/hosts`，但 Docker build 環境禁止修改。
+
+**解決方案**：將 `/etc/hosts` 修改移至 `entrypoint.sh`（容器執行期才可寫）：
+```bash
+echo "172.22.0.50  mystery.internal" >> /etc/hosts
+```
+
+### 9.3 PTY 與 WebSocket 整合
+
+**問題**：直接 spawn `docker exec` 不支援 vim、top 等互動式程式。
+
+**解決方案**：使用 `node-pty` 以 PTY 模式啟動 `docker exec -it`，雙向橋接 stdin/stdout 至 WebSocket，同時處理 Terminal resize（`SIGWINCH`）。
+
+### 9.4 Falco 日誌積壓 OOM 事故
+
+**問題**：15 場景完整測試後，Falco 累積 14 萬+ 行日誌（其中 12 萬筆來自 room6 strace pilot），記憶體持續攀升，OOM-kill 全部遊戲容器。
+
+**解決方案**：
+- 關閉 strace ground truth pilot（僅保留 room6 的 step 輸出，不記錄 Ptrace Attach）
+- 為 Falco 設定告警速率限制（rate limiting）
+- 長期測試前清空 Falco log 緩衝區
+
+---
+
+## 10. 部署說明
+
+### 10.1 系統需求
+
+| 工具 | 最低版本 | 確認指令 |
+|------|---------|---------|
+| Docker Desktop | 4.0+ | `docker --version` |
+| Docker Compose | v2.0+ | `docker compose version` |
+| 可用記憶體 | 4 GB+ | — |
+| 作業系統 | Windows / Linux / macOS | — |
+
+### 10.2 啟動步驟
 
 **Linux / macOS：**
 ```bash
 cd escape-docker
-cp .env.example .env
-bash start.sh
+cp .env.example .env   # 可修改 FLAG_SEED 和 ADMIN_TOKEN
+bash start.sh          # 第一次約 10-15 分鐘（build image）
 ```
 
-### 7.3 遊戲流程
-
-```
-1. 開瀏覽器 → http://localhost
-2. 輸入玩家名字
-3. 進入 http://localhost/map.html 查看房間地圖
-4. 點擊 Room 0（Tutorial）開始
-5. 在左側 xterm.js 終端機輸入 Linux 指令解謎
-6. 找到 FLAG（格式：EscapeDocker{xxxxxxxxxxxxxxxx}）
-7. 在右側欄位貼上 FLAG 並按「提交」
-8. 解鎖下一關，循環到通關 Final Boss
+**Windows（PowerShell）：**
+```powershell
+cd escape-docker
+Copy-Item .env.example .env
+.\start.ps1
 ```
 
-### 7.4 管理員功能
+**啟動後開啟瀏覽器**：
 
-前往 `http://localhost/admin.html`，輸入 `.env` 裡的 `ADMIN_TOKEN`：
+| 頁面 | 網址 |
+|------|------|
+| 首頁 | http://localhost |
+| Lab 控制台 | http://localhost/lab/ |
+| 房間地圖 | http://localhost/map.html |
+| 排行榜 | http://localhost/scoreboard.html |
+| Admin | http://localhost/admin.html |
 
-- 即時查看所有玩家排行榜
-- 查看每個玩家的 FLAG 提交記錄
-- 查看提示使用記錄
-- **查看所有 FLAG 答案**（方便 demo 驗證）
-
----
-
-## 8. 技術挑戰與解決方案
-
-### 8.1 Docker build 網路超時
-
-**問題：** `docker compose build` 並行建置 20+ 個 image 時，多個容器同時下載 apt / pip 套件，導致網路頻寬不足而超時，引發連鎖取消（一個失敗→所有並行 build 被取消）。
-
-**解決方案：**
-1. 在所有 Ubuntu Dockerfile 加入 apt 超時與重試設定：
-   ```dockerfile
-   RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "120";\n' \
-       > /etc/apt/apt.conf.d/80-retries
-   ```
-2. pip 加入超時與重試參數：
-   ```dockerfile
-   RUN pip install --no-cache-dir --timeout 300 --retries 5 -r requirements.txt
-   ```
-3. 在啟動腳本設定 `BUILDKIT_MAX_PARALLELISM=4`，限制同時建置數量。
-
-### 8.2 Docker build 時 /etc/hosts 唯讀
-
-**問題：** Room 5 的 `setup.sh` 在 build 階段嘗試寫入 `/etc/hosts`，但 Docker build 環境中 `/etc/hosts` 是唯讀的。
-
-**解決方案：** 將 `/etc/hosts` 的修改移到 `entrypoint.sh`（容器執行期），此時 `/etc/hosts` 是可寫的。
+### 10.3 常用管理指令
 
 ```bash
-# entrypoint.sh（容器啟動時執行）
-echo "172.22.0.50  mystery.internal" >> /etc/hosts
+# 查看所有容器狀態
+docker compose ps
+
+# 查看 Falco 告警（即時）
+docker compose logs -f falco
+
+# 查看 room-manager 動態啟停記錄
+docker compose logs -f room-manager
+
+# 手動重置某個房間（恢復乾淨狀態）
+curl -X POST http://localhost/api/rooms/room6/reset \
+  -H "X-Admin-Token: <ADMIN_TOKEN>"
+
+# 完全停止（保留容器）
+docker compose stop
+
+# 停止並刪除容器（保留 image 和資料）
+docker compose down
+
+# 重新生成所有 FLAG（修改 FLAG_SEED 後）
+docker compose down && bash start.sh
+
+# 重置玩家資料庫
+rm scoreboard-api/data/scores.db
+docker compose restart scoreboard-api
 ```
 
-### 8.3 WebSocket 與 docker exec 的 PTY 整合
+### 10.4 環境變數
 
-**問題：** 直接 spawn `docker exec` 不支援互動式程式（vim、top），因為沒有 PTY（偽終端機）。
-
-**解決方案：** 使用 `node-pty` 以 PTY 模式啟動 `docker exec -it`，再將 stdin/stdout 雙向橋接到 WebSocket，同時處理 Terminal resize 事件（`SIGWINCH`）。
-
-### 8.4 動態 FLAG 的跨服務驗證
-
-**問題：** 每個 room 容器在執行期動態生成 FLAG，但 scoreboard-api 需要在不知道答案的情況下驗證 FLAG 是否正確。
-
-**解決方案：** scoreboard-api 與所有 room 容器共享同一個 `FLAG_SEED` 環境變數，使用完全相同的計算邏輯：
-
-```python
-sha256(f"{FLAG_SEED}-{room_id}").hexdigest()[:16]
-```
-
-兩邊計算結果相同，不需要任何跨容器通訊。
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `FLAG_SEED` | escape_docker_dev_seed | FLAG 生成種子（改此值重新生成全部 FLAG） |
+| `ADMIN_TOKEN` | admin_dev_token | Admin API 認證 token |
+| `ROOM_STOP_IDLE_MINUTES` | 10 | 無連線多久後自動停止容器 |
+| `ROOM_RESET_IDLE_MINUTES` | 60 | 停止多久後自動重置容器（需 > STOP 值） |
 
 ---
 
-## 9. 學習成果對應
-
-### 9.1 課程知識點覆蓋
-
-| 課程單元 | 對應關卡 | 核心技術 |
-|---------|---------|---------|
-| Linux 檔案系統 | Room 0, 1 | `find`, `base64`, `strings`, `file` |
-| Linux 權限管理 | Room 2 | `chmod`, `sudo`, SUID bit, `sudoers` |
-| 行程管理 | Room 3 | `ps`, `/proc`, `kill`, Unix signals |
-| SSH 與遠端連線 | Room 4 | `ssh-keygen`, `authorized_keys`, SSH Tunnel |
-| 網路工具 | Room 5 | `ss`, `netcat`, `/etc/hosts`, DNS |
-| Docker 基本操作 | Room 6 | `docker ps/logs/inspect/diff/exec` |
-| Dockerfile 與 Build | Room 7 | `docker build`, image layers, `docker history` |
-| Docker Compose | Room 8 | `docker-compose.yml`, healthcheck |
-| Docker 網路 | Room 9 | bridge, internal, `docker network connect` |
-| Log 分析 | Room 10 | `grep`, `awk`, `sed`, pipeline |
-| 系統自動化 | Room 11 | `crontab`, bash script, timing |
-| Container Security | Final Boss | `docker.sock`, Docker REST API |
-
-### 9.2 安全觀念教育
-
-- **docker.sock 安全**：Final Boss 示範為什麼不應隨意掛載 docker socket
-- **ENV 變數洩漏**：Secret Room A 示範敏感資訊不應放在容器 ENV
-- **Image layer 的持久性**：Secret Room B 示範已刪除的資料仍在舊 layer 中
-- **SUID 與 sudo 漏洞**：Room 2 示範不當的 sudo 設定可導致提權
-
----
-
-## 10. 未來擴充方向
-
-| 方向 | 說明 |
-|------|------|
-| **多人競賽模式** | 加入實時通知（WebSocket push），玩家可以看到其他人通關 |
-| **計時排名** | 除分數外，加入通關時間排名 |
-| **Kubernetes 關卡** | 加入 k8s 相關章節（Pod、Service、ConfigMap）|
-| **CTF 模式** | 支援多組 FLAG_SEED 隔離，讓不同班級互不影響 |
-| **回放功能** | 記錄每個玩家的指令歷史，供教師事後分析學習行為 |
-
----
-
-## 附錄：目錄結構
+## 11. 附錄：目錄結構
 
 ```
 escape-docker/
+├── docker-compose.yml        ← 所有服務（6 管理 + 22 遊戲容器）
+├── start.sh / start.ps1      ← 一鍵啟動腳本
 ├── .env.example              ← 環境設定範本
-├── docker-compose.yml        ← 所有 20+ 個服務定義
-├── start.ps1                 ← Windows 一鍵啟動腳本
-├── start.sh                  ← Linux/macOS 啟動腳本
 │
 ├── nginx/
-│   └── nginx.conf            ← 反向代理設定
+│   └── nginx.conf            ← 7 條反向代理路由
 │
-├── frontend/                 ← 前端靜態頁面
-│   ├── index.html            ← 首頁
-│   ├── map.html              ← 房間地圖
-│   ├── play.html             ← 主遊戲頁（xterm.js）
+├── frontend/                 ← 靜態前端
+│   ├── index.html            ← 首頁（Lab 入口 + Story Mode 入口）
+│   ├── map.html              ← 房間地圖（含即時狀態徽章）
+│   ├── play.html             ← 遊戲終端機（xterm.js）
 │   ├── scoreboard.html       ← 排行榜
 │   ├── achievements.html     ← 成就牆
-│   └── admin.html            ← 管理員面板
+│   ├── admin.html            ← 管理員面板
+│   ├── js/                   ← api.js / terminal.js
+│   └── lab/
+│       ├── index.html        ← 實驗控制台
+│       ├── run.html          ← 即時攻擊檢視
+│       └── analytics.html    ← 分析儀表板（RQ1/RQ2/RQ3）
 │
-├── terminal-gateway/         ← Node.js WebSocket ↔ docker exec 橋接
+├── terminal-gateway/         ← Node.js WebSocket ↔ docker exec
 │   ├── index.js
 │   ├── docker-exec.js
-│   └── package.json
+│   ├── room-manager-client.js
+│   └── room-config.json
 │
 ├── scoreboard-api/           ← FastAPI 後端
-│   ├── main.py               ← API 端點
-│   ├── flags.py              ← 動態 FLAG + 提示資料
-│   ├── achievements.py       ← 成就判斷邏輯
-│   ├── database.py           ← SQLite 操作
-│   └── requirements.txt
+│   ├── main.py               ← API 端點（14 個）
+│   ├── flags.py              ← FLAG 生成 + 提示資料
+│   ├── achievements.py       ← 成就判斷
+│   └── database.py           ← SQLite（5 張表）
 │
-└── rooms/
-    ├── room0/ ~ room11/      ← 12 個主關（各含 Dockerfile + setup.sh）
-    ├── final/                ← Final Boss
-    ├── secret-a/             ← 隱藏關 A
-    ├── secret-b/             ← 隱藏關 B
-    └── helpers/
-        ├── locked-server/    ← Room 4 SSH 目標
-        └── secret-server/    ← Room 9 隔離 API
+├── room-manager/             ← Node.js 動態容器管理
+│   ├── index.js
+│   ├── lib/app.js / docker.js / state.js / idle-sweeper.js
+│   └── rooms-config.json
+│
+├── lab-api/                  ← 攻擊執行引擎
+│   ├── index.js
+│   └── data/runs.json        ← 執行歷史資料庫
+│
+├── lab/
+│   ├── scenarios/            ← 15 個場景定義（JSON）
+│   └── exploits/             ← 15 支攻擊腳本（bash）
+│
+├── falco/
+│   ├── falco.yaml            ← Falco 設定
+│   └── rules/                ← Basic / Full 規則檔
+│
+├── rooms/
+│   ├── room0/ ~ room11/      ← 12 個主關（Dockerfile + setup.sh + entrypoint.sh）
+│   ├── final/                ← Final Boss
+│   ├── secret-a/ / secret-b/ ← 隱藏關
+│   └── helpers/
+│       ├── locked-server/    ← Room 4 SSH 目標（含 flag_server.py）
+│       └── secret-server/    ← Room 9 Token 驗證 API
+│
+└── experiments/
+    ├── monitor_resources.py  ← docker stats 記錄腳本
+    ├── plot_resources.py     ← 繪圖腳本
+    └── resource_comparison.png ← Baseline vs Dynamic 對比圖
+
 ```
 
 ---
 
-*Linux 與邊緣運算 期末專案 — Escape Docker*
+*Linux 與邊緣運算 期末專案 — Edge Container Security Lab*
