@@ -373,7 +373,7 @@ ssh -i /tmp/mykey player@locked-server -L 9090:localhost:9090 &
 curl http://localhost:9090/flag
 ```
 
-**Falco 偵測**：規則覆蓋率 87.5%，觸發 `SSH Key-Based Lateral Movement` 相關告警。
+**Falco 偵測**：規則覆蓋率 100%，觸發 `SSH Keygen Executed`、`Authorized Keys Modified`、`SSH Local Port Forward Established`、`Loopback Connection To Internal-Only Port 9090` 四條規則。平均偵測延遲 65,478 ms（確認為 WSL2 webhook 佇列延遲，並非規則反應問題）。
 
 ---
 
@@ -394,7 +394,7 @@ curl --unix-socket /var/run/docker.sock \
 
 **核心發現**：唯讀掛載只限制 socket 的 POSIX 寫入，但 Docker API 本身是無狀態的 HTTP，`docker exec`、`docker logs`、`docker inspect` 等操作的語義「讀取」能力完全保留。
 
-**Falco 偵測**：規則覆蓋率 91.7%。
+**Falco 偵測**：規則覆蓋率 100%，觸發 `Docker Socket Accessed From Container` 與 `Unexpected Child Process In Container Via Docker Exec` 兩條規則。平均偵測延遲 634 ms，為所有 T4 場景中反應最快（唯讀 socket 仍觸發 API 呼叫層規則）。誤報率 50%（`Unexpected Child Process` 規則在靜置期間也會因 terminal-gateway 背景連線持續觸發）。
 
 ---
 
@@ -416,35 +416,41 @@ curl --unix-socket /var/run/docker.sock \
 | **偵測延遲** | 攻擊開始到第一筆相關告警的時間差（毫秒） |
 | **誤報率** | Baseline 期間觸發的「高頻背景告警」佔所有告警的比例 |
 
-#### 結果摘要（Full Tier）
+#### 結果摘要（Full Tier，每個場景各跑 6 次，取平均值）
 
-| 場景 | 等級 | 覆蓋率 | 延遲（ms） | 誤報率 |
-|------|------|--------|----------|--------|
-| room0 | T1 | 83.3% | 450 | 高 |
-| room1 | T1 | 83.3% | 312 | 中 |
-| room2 | T2 | 100% | 180 | 低 |
-| room3 | T1 | 83.3% | 723 | 中 |
-| room4 | T3 | 87.5% | 1203 | 低 |
-| room5 | T1 | 83.3% | 544 | 中 |
-| room6 | T4 | 91.7% | 44 | 低 |
-| room7 | T4 | 91.7% | 89 | 低 |
-| room8 | T1 | 33.3% | 5943 | 低 |
-| room9 | T3 | 87.5% | 2100 | 低 |
-| room10 | T1 | **null** | — | **null** |
-| room11 | T2 | 100% | 390 | 中 |
-| final | T4 | 91.7% | 67 | 低 |
-| secret-a | T1 | 83.3% | 812 | 中 |
-| secret-b | T4 | 91.7% | 134 | 低 |
-| **平均** | — | **88.7%** | **1,770 ms** | **26.8%** |
+> 偵測延遲定義：`POST /api/lab/runs` 發出時間 → 第一筆對應 Falco 告警送達 lab-api 的時間差（兩端均採 lab-api 時鐘）。room4 / room9 / room11 / secret-a 的延遲值偏高（> 65 s），主因為 Docker Desktop / WSL2 modern_eBPF 環境的 Falco webhook 佇列延遲，並非偵測器本身反應慢。
 
-#### 各等級偵測效能
+| 場景 | 等級 | 覆蓋率 | 平均延遲 | 誤報率 | 平均執行時間 |
+|------|------|--------|---------|--------|-------------|
+| room0 | T1 | **100%** | 1,149 ms | **100%** | 806 ms |
+| room1 | T1 | **100%** | 1,876 ms | 0% | 1,480 ms |
+| room2 | T2 | **100%** | 19,888 ms | 33% | 1,463 ms |
+| room3 | T1 | **100%** | 1,384 ms | 50% | 2,267 ms |
+| room4 | T3 | **100%** | 65,478 ms ⚠ | 0% | 3,369 ms |
+| room5 | T1 | **100%** | 2,078 ms | 0% | 3,237 ms |
+| room6 | T4 | **100%** | 634 ms | 50% | 7,623 ms |
+| room7 | T4 | **33%** | 11,926 ms | 0% | 21,768 ms |
+| room8 | T1 | **100%** | 1,995 ms | 0% | 65,843 ms |
+| room9 | T3 | **100%** | 124,868 ms ⚠ | 0% | 2,767 ms |
+| room10 | T1 | **—** | — | — | 1,818 ms |
+| room11 | T2 | **100%** | 128,222 ms ⚠ | 25% | 35,186 ms |
+| final | T4 | **100%** | 450 ms | 50% | 1,726 ms |
+| secret-a | T1 | **100%** | 115,554 ms ⚠ | 50% | 697 ms |
+| secret-b | T4 | **100%** | 2,273 ms | 0% | 23,593 ms |
+| **平均** | — | **95.2%** | ——（含延遲異常場景）| **25.6%** | — |
 
-| 等級 | 平均覆蓋率 | 說明 |
-|------|----------|------|
-| T1 | 83.3% | room10 為 null（應用層盲區），拉低均值 |
-| T2 | 100% | Sudo / Cron 有成熟規則，覆蓋完整 |
-| T3 | 87.5% | SSH 跳板 + 網路操作均可偵測 |
-| T4 | 91.7% | docker.sock 操作是 Falco 強項 |
+⚠ 延遲異常場景（> 10 s）確認為 Falco webhook 佇列積壓所致，非規則偵測問題。
+
+#### 各等級偵測效能（Full Tier，排除 room10 null）
+
+| 等級 | 場景數 | 平均覆蓋率 | 說明 |
+|------|--------|----------|------|
+| T1 | 6（room10 排除）| **100%** | room10 為結構性盲區（應用層日誌洩漏），其餘 T1 場景全覆蓋 |
+| T2 | 2 | **100%** | sudo 引數注入與 cron 注入均有成熟規則，完整覆蓋 |
+| T3 | 2 | **100%** | SSH 跳板與網路隔離突破均可偵測 |
+| T4 | 4 | **83.3%** | room7 僅觸發 1/3 規則（33%），拉低均值；docker.sock 存取本身偵測率仍 100% |
+
+值得注意的是，room7（T4）規則覆蓋率偏低源於其攻擊路徑：玩家需先修復 Dockerfile 才能使用 docker.sock，修復流程的 docker compose 操作路徑與規則 condition 不完全吻合。相較之下 room6 / final 的 docker.sock 直接存取場景覆蓋率均達 100%。
 
 #### 關鍵負面發現
 
@@ -486,15 +492,15 @@ python3 -c "import base64,sys; print(base64.b64decode(open('secret.encoded').rea
 
 ### 5.2 RQ3：邊緣資源成本
 
-#### 穩態資源開銷
+#### 穩態資源開銷（docker stats 快照，Full Tier 常駐，2026-06-22）
 
-| 服務 | CPU（%） | 記憶體 |
-|------|---------|--------|
-| escape-falco | 1.22% ~ 8.53% | 73.91 ~ 91.84 MiB |
-| lab-api | 4.04% | 49.95 MiB |
-| room-manager | 0% | 33.46 MiB |
+| 服務 | CPU（%） | 記憶體用量 | 記憶體佔比 |
+|------|---------|-----------|----------|
+| escape-falco | 0.56% | 76.29 MiB | 1.01% |
+| lab-api | 0.58% | 96.17 MiB | 1.27% |
+| room-manager | 0% | 45.68 MiB | 0.61% |
 
-Falco 在穩態時的 CPU 與記憶體開銷相對於邊緣節點（4 GB RAM）屬於可接受範圍（< 10%）。
+Falco 穩態 CPU < 1%，記憶體 76 MiB，約為 lab-api 的 80%。在本實驗用 x86 主機（7.4 GB RAM）上三個服務合計記憶體佔比不到 3%，屬完全可接受範圍。但須注意 Falco 的 CPU 會隨告警量波動（strace pilot 期間曾瞬時達 8.53%），以及偵測器重啟時因 eBPF probe reattach 產生的尖峰效應（詳見 9.4 節）。
 
 #### 告警積壓 OOM-kill 事故
 
@@ -515,16 +521,27 @@ Falco 在穩態時的 CPU 與記憶體開銷相對於邊緣節點（4 GB RAM）�
 - 定期輪替日誌（logrotate）
 - 評估 Basic Tier 替代 Full Tier 以降低告警量
 
-#### 告警傳輸量估算（每日 MB）
+#### Tier 對比：偵測效能與資源成本（各場景各跑 3 次）
 
-假設每筆告警 350 bytes，以 10 個房間容器為例：
+| 指標 | Basic Tier（8 規則） | Full Tier（31 規則） | 倍數 |
+|------|-------------------|------------------|------|
+| 平均規則覆蓋率 | **37.5%** | **95.2%** | Full 高出 57.7 pp |
+| 平均誤報率 | **7.1%** | **25.6%** | Full 高出 **3.6×** |
+| Baseline 告警率（每容器/分） | **~135 則** | **~434 則** | Full 高出 **3.2×** |
 
-| Tier | 每小時告警數（估） | 每日傳輸量 |
-|------|----------------|----------|
-| Basic（8 規則） | ~120 | ~1.0 MB |
-| Full（31 規則） | ~620 | ~5.2 MB |
+Basic Tier 的覆蓋率較低（37.5%）主要因為多數 T1 場景（find / base64 / SSH 操作）的規則僅存在於 Full Tier；但換來的是誤報率從 25.6% 降至 7.1%、告警雜訊降低 3.2 倍。
 
-選擇 Basic Tier 每日可節省約 **4.2 MB** 傳輸量，在頻寬受限的邊緣場景具實際意義。
+#### 告警傳輸量估算（每日，以 10 個房間容器、每筆 350 bytes 計算）
+
+實驗量測到的 Baseline 靜置告警率（15 場景跨 Baseline 平均值）：
+
+| Tier | 平均告警率（每容器/分） | 每小時傳輸量（10 容器） | 每日傳輸量（10 容器） |
+|------|-------------------|-------------------|-----------------|
+| Basic（8 規則） | ~135 則/分 | **27.1 MB/hr** | **650 MB/day** |
+| Full（31 規則） | ~434 則/分 | **87.1 MB/hr** | **2,090 MB/day** |
+| 節省（Full → Basic） | — | 60.0 MB/hr | **1,440 MB/day** |
+
+選擇 Basic Tier 每日可節省約 **1.4 GB** 傳輸量（以 10 容器計算）。在頻寬受限的邊緣環境中，此差距足以影響網路設計決策。注意：上述為靜置背景告警率的推算，實際攻擊執行期間告警量會額外增加。
 
 ---
 
